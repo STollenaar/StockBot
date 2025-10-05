@@ -1,0 +1,15 @@
+statsbotWork.code-workspace
+.env
+.vs/
+docker-compose.yml
+**/__debug_bin
+dist/
+config.json
+terraform/**/.terraform/
+volumes/
+**/*.db*
+*.csv
+**/__debug_*
+__pycache__/
+venv/
+tools/charts/chart.html
