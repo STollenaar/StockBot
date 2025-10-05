@@ -1,14 +1,13 @@
 package stockcommand
 
 import (
-	"context"
 	"fmt"
-	"log"
 	"log/slog"
+	"strings"
 
-	finnhub "github.com/Finnhub-Stock-API/finnhub-go/v2"
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
+	yfa "github.com/oscarli916/yahoo-finance-api"
 	"github.com/stollenaar/stockbot/internal/util"
 )
 
@@ -17,24 +16,11 @@ var (
 		Name:        "stock",
 		Description: "Stock interaction command",
 	}
-	finnhubClient *finnhub.DefaultApiService
 )
 
 type StockCommand struct {
 	Name        string
 	Description string
-}
-
-func init() {
-	cfg := finnhub.NewConfiguration()
-	token, err := util.GetFinnhub()
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	cfg.AddDefaultHeader("X-Finnhub-Token", token)
-	finnhubClient = finnhub.NewAPIClient(cfg).DefaultApi
 }
 
 func (s StockCommand) Handler(event *events.ApplicationCommandInteractionCreate) {
@@ -48,13 +34,14 @@ func (s StockCommand) Handler(event *events.ApplicationCommandInteractionCreate)
 	sub := event.SlashCommandInteractionData()
 
 	var components []discord.LayoutComponent
+	var embeds []discord.Embed
 	switch *sub.SubCommandName {
 	case "show":
-		components = showHandler(sub)
+		embeds = showHandler(sub)
 	}
 	_, err = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
-		Components: &components,
-		Flags:      util.ConfigFile.SetComponentV2Flags(),
+		Embeds: &embeds,
+		// Flags:  util.ConfigFile.SetComponentV2Flags(),
 	})
 	if err != nil {
 		slog.Error("Error editing the response:", slog.Any("err", err), slog.Any(". With body:", components))
@@ -77,19 +64,53 @@ func (s StockCommand) CreateCommandArguments() []discord.ApplicationCommandOptio
 	}
 }
 
-func showHandler(args discord.SlashCommandInteractionData) (components []discord.LayoutComponent) {
-	quote, _, err := finnhubClient.Quote(context.TODO()).Symbol(args.Options["symbol"].String()).Execute()
+func showHandler(args discord.SlashCommandInteractionData) (embeds []discord.Embed) {
+	symbol := strings.ToUpper(args.Options["symbol"].String())
+
+	ticker := yfa.NewTicker(symbol)
+	// get the latest PriceData
+	info, err := ticker.Info()
 	if err != nil {
 		slog.Error("Error fetching stock", slog.Any("err", err))
 		return
 	}
 
-	var container discord.ContainerComponent
-	container.Components = append(container.Components,
-		discord.TextDisplayComponent{
-			Content: fmt.Sprintf("**Name:** %s\n**Maker Price:** %.2f\n**Market Change:** (%.2f%%)", args.Options["symbol"].String(), quote.GetC(), quote.GetDp()),
-		})
+	var embed discord.Embed
 
-	components = append(components, container)
+	// Handle not found
+	if info.LongName == "" {
+		embed.Title = "Not found"
+		embed.Description = fmt.Sprintf("The stock with symbol: %s couldn't be found", symbol)
+		embeds = append(embeds, embed)
+		return
+	}
+
+	embed.Title = info.LongName
+	embed.Fields = append(embed.Fields,
+		discord.EmbedField{
+			Name:   "Price",
+			Value:  fmt.Sprintf("%s %s %.2f", info.Currency, info.CurrencySymbol, info.RegularMarketPrice.Raw),
+			Inline: util.Pointer(true),
+		},
+
+		discord.EmbedField{
+			Name:  "Dialy Change",
+			Value: info.RegularMarketChangePercent.Fmt,
+		},
+	)
+	if info.RegularMarketChangePercent.Raw > 0 {
+		embed.Color = 5763719
+	} else {
+		embed.Color = 15548997
+	}
+	embeds = append(embeds, embed)
 	return
+
+	// var container discord.ContainerComponent
+	// container.Components = append(container.Components,
+	// 	discord.TextDisplayComponent{
+	// 		Content: fmt.Sprintf("**Name:** %s\n**Maker Price:** %.2f\n**Market Change:** (%.2f%%)", info.LongName, info.RegularMarketPrice.Raw, info.RegularMarketChangePercent.Raw),
+	// 	})
+
+	// components = append(components, container)
 }

@@ -54,10 +54,6 @@ resource "kubernetes_deployment_v1" "stockbot" {
             value = "/discord_tokens/${local.name}"
           }
           env {
-            name = "AWS_FINNHUB"
-            value = "/finnhub"
-          }
-          env {
             name  = "ADMIN_USER_ID"
             value = "134337759446958081"
           }

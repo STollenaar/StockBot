@@ -100,3 +100,7 @@ func GetSeparator() discord.SeparatorComponent {
 		Spacing: discord.SeparatorSpacingSizeLarge,
 	}
 }
+
+func Pointer[T any](d T) *T {
+    return &d
+}
