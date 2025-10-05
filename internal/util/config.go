@@ -107,7 +107,7 @@ func GetDiscordToken() string {
 
 func GetFinnhub() (string, error) {
 	if ConfigFile.FINNHUB == "" && ConfigFile.AWS_FINNHUB == "" {
-		log.Fatal("OLLAMA_AUTH_USERNAME or AWS_OLLAMA_AUTH_USERNAME is not set")
+		log.Fatal("FINNHUB or AWS_FINNHUB is not set")
 	}
 
 	if ConfigFile.FINNHUB != "" {
