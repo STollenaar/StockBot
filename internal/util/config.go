@@ -23,13 +23,7 @@ type Config struct {
 	AWS_REGION     string
 	TERMINAL_REGEX string
 
-	OLLAMA_URL       string
-	OLLAMA_AUTH_TYPE string
-
-	AWS_OLLAMA_AUTH_USERNAME string
-	OLLAMA_AUTH_USERNAME     string
-	AWS_OLLAMA_AUTH_PASSWORD string
-	OLLAMA_AUTH_PASSWORD     string
+	FINNHUB string
 
 	ADMIN_USER_ID string
 }
@@ -50,18 +44,13 @@ func init() {
 	}
 
 	ConfigFile = &Config{
-		AWS_REGION:               os.Getenv("AWS_REGION"),
-		DISCORD_TOKEN:            os.Getenv("DISCORD_TOKEN"),
-		AWS_PARAMETER_NAME:       os.Getenv("AWS_PARAMETER_NAME"),
-		TERMINAL_REGEX:           os.Getenv("TERMINAL_REGEX"),
-		DUCKDB_PATH:              os.Getenv("DUCKDB_PATH"),
-		OLLAMA_URL:               os.Getenv("OLLAMA_URL"),
-		OLLAMA_AUTH_TYPE:         os.Getenv("OLLAMA_AUTH_TYPE"),
-		OLLAMA_AUTH_USERNAME:     os.Getenv("OLLAMA_AUTH_USERNAME"),
-		OLLAMA_AUTH_PASSWORD:     os.Getenv("OLLAMA_AUTH_PASSWORD"),
-		AWS_OLLAMA_AUTH_USERNAME: os.Getenv("AWS_OLLAMA_AUTH_USERNAME"),
-		AWS_OLLAMA_AUTH_PASSWORD: os.Getenv("AWS_OLLAMA_AUTH_PASSWORD"),
-		ADMIN_USER_ID:            os.Getenv("ADMIN_USER_ID"),
+		AWS_REGION:         os.Getenv("AWS_REGION"),
+		DISCORD_TOKEN:      os.Getenv("DISCORD_TOKEN"),
+		AWS_PARAMETER_NAME: os.Getenv("AWS_PARAMETER_NAME"),
+		TERMINAL_REGEX:     os.Getenv("TERMINAL_REGEX"),
+		DUCKDB_PATH:        os.Getenv("DUCKDB_PATH"),
+		ADMIN_USER_ID:      os.Getenv("ADMIN_USER_ID"),
+		FINNHUB:      os.Getenv("FINNHUB"),
 	}
 	if ConfigFile.TERMINAL_REGEX == "" {
 		ConfigFile.TERMINAL_REGEX = `(\.|,|:|;|\?|!)$`
@@ -112,29 +101,6 @@ func GetDiscordToken() string {
 		log.Fatal(err)
 	}
 	return out
-}
-
-func GetOllamaUsername() (string, error) {
-	if ConfigFile.OLLAMA_AUTH_USERNAME == "" && ConfigFile.AWS_OLLAMA_AUTH_USERNAME == "" {
-		log.Fatal("OLLAMA_AUTH_USERNAME or AWS_OLLAMA_AUTH_USERNAME is not set")
-	}
-
-	if ConfigFile.OLLAMA_AUTH_USERNAME != "" {
-		return ConfigFile.OLLAMA_AUTH_USERNAME, nil
-	}
-	return getAWSParameter(ConfigFile.AWS_OLLAMA_AUTH_USERNAME)
-}
-
-func GetOllamaPassword() (string, error) {
-	if ConfigFile.OLLAMA_AUTH_PASSWORD == "" && ConfigFile.AWS_OLLAMA_AUTH_PASSWORD == "" {
-		log.Fatal("OLLAMA_AUTH_PASSWORD or AWS_OLLAMA_AUTH_PASSWORD is not set")
-	}
-
-	if ConfigFile.OLLAMA_AUTH_PASSWORD != "" {
-		return ConfigFile.OLLAMA_AUTH_PASSWORD, nil
-	}
-
-	return getAWSParameter(ConfigFile.AWS_OLLAMA_AUTH_PASSWORD)
 }
 
 func getAWSParameter(parameterName string) (string, error) {

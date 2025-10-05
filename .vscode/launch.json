@@ -18,7 +18,7 @@
                 "CGO_LDFLAGS": "-v"
             },
             "args": [
-                "--guild=497544520695808000",
+                "--guild=544911814886948865",
                 "--debug",
                 "--rmcmd"
             ]
@@ -37,7 +37,7 @@
                 "CGO_LDFLAGS": "-v"
             },
             "args": [
-                "--guild=497544520695808000",
+                "--guild=544911814886948865",
                 "--debug",
                 "--rmcmd",
                 "--purgecmd"

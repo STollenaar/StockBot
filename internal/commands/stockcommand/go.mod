@@ -1,24 +1,16 @@
-module github.com/stollenaar/stockbot/main
+module github.com/stollenaar/stockbot/internal/commands/stockcommand
 
 go 1.25.0
 
-// github.com/stollenaar/stockbot/internal/database => ../database
-replace (
-	github.com/stollenaar/stockbot/internal/commands => ../internal/commands
-	github.com/stollenaar/stockbot/internal/commands/stockcommand => ../internal/commands/stockcommand
-	github.com/stollenaar/stockbot/internal/util => ../internal/util
-)
+replace github.com/stollenaar/stockbot/internal/util => ../../util
 
 require (
-	github.com/bwmarrin/discordgo v0.29.0
+	github.com/Finnhub-Stock-API/finnhub-go/v2 v2.0.20
 	github.com/disgoorg/disgo v0.19.0-rc.6.0.20251001221443-fb4115d440f9
-	github.com/disgoorg/snowflake/v2 v2.0.3
-	github.com/stollenaar/stockbot/internal/commands v0.0.0-20251005142118-25026fcf92bf
-	github.com/stollenaar/stockbot/internal/util v0.0.0-20250929215636-9407d818cd52
+	github.com/stollenaar/stockbot/internal/util v0.0.0-00010101000000-000000000000
 )
 
 require (
-	github.com/Finnhub-Stock-API/finnhub-go/v2 v2.0.20 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.39.2 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.31.12 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.16 // indirect
@@ -35,6 +27,7 @@ require (
 	github.com/aws/smithy-go v1.23.0 // indirect
 	github.com/disgoorg/json/v2 v2.0.0 // indirect
 	github.com/disgoorg/omit v1.0.0 // indirect
+	github.com/disgoorg/snowflake/v2 v2.0.3 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/encoding/ini v0.1.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
@@ -49,11 +42,10 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spf13/viper v1.21.0 // indirect
 	github.com/stollenaar/aws-rotating-credentials-provider/credentials v0.0.0-20250330204128-299effe6093c // indirect
-	github.com/stollenaar/stockbot/internal/commands/stockcommand v0.0.0-00010101000000-000000000000 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.42.0 // indirect
-	golang.org/x/net v0.43.0 // indirect
+	golang.org/x/crypto v0.39.0 // indirect
+	golang.org/x/net v0.21.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20210218202405-ba52d332ba99 // indirect
 	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/text v0.29.0 // indirect

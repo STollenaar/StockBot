@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
@@ -40,12 +39,12 @@ func init() {
 			data := event.SlashCommandInteractionData()
 			commands.CommandHandlers[data.CommandName()](event)
 		}),
-		bot.WithEventListenerFunc(func(event *events.ModalSubmitInteractionCreate) {
-			commands.ModalSubmitHandlers[event.Data.CustomID](event)
-		}),
-		bot.WithEventListenerFunc(func(event *events.ComponentInteractionCreate) {
-			commands.ComponentHandlers[strings.Split(event.Data.CustomID(), "_")[0]](event)
-		}),
+		// bot.WithEventListenerFunc(func(event *events.ModalSubmitInteractionCreate) {
+		// 	commands.ModalSubmitHandlers[event.Data.CustomID](event)
+		// }),
+		// bot.WithEventListenerFunc(func(event *events.ComponentInteractionCreate) {
+		// 	commands.ComponentHandlers[strings.Split(event.Data.CustomID(), "_")[0]](event)
+		// }),
 	)
 
 	if err != nil {
