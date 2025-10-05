@@ -54,8 +54,8 @@ resource "kubernetes_deployment_v1" "stockbot" {
             value = "/discord_tokens/${local.name}"
           }
           env {
-            name  = "OLLAMA_HOST"
-            value = "ollama.ollama.svc.cluster.local:11434"
+            name = "AWS_FINNUB"
+            value = "/finnub"
           }
           env {
             name  = "ADMIN_USER_ID"

@@ -24,6 +24,7 @@ type Config struct {
 	TERMINAL_REGEX string
 
 	FINNHUB string
+	AWS_FINNHUB string
 
 	ADMIN_USER_ID string
 }
@@ -50,7 +51,8 @@ func init() {
 		TERMINAL_REGEX:     os.Getenv("TERMINAL_REGEX"),
 		DUCKDB_PATH:        os.Getenv("DUCKDB_PATH"),
 		ADMIN_USER_ID:      os.Getenv("ADMIN_USER_ID"),
-		FINNHUB:      os.Getenv("FINNHUB"),
+		FINNHUB:            os.Getenv("FINNHUB"),
+		AWS_FINNHUB:        os.Getenv("AWS_FINNHUB"),
 	}
 	if ConfigFile.TERMINAL_REGEX == "" {
 		ConfigFile.TERMINAL_REGEX = `(\.|,|:|;|\?|!)$`
@@ -101,6 +103,17 @@ func GetDiscordToken() string {
 		log.Fatal(err)
 	}
 	return out
+}
+
+func GetFinnhub() (string, error) {
+	if ConfigFile.FINNHUB == "" && ConfigFile.AWS_FINNHUB == "" {
+		log.Fatal("OLLAMA_AUTH_USERNAME or AWS_OLLAMA_AUTH_USERNAME is not set")
+	}
+
+	if ConfigFile.FINNHUB != "" {
+		return ConfigFile.FINNHUB, nil
+	}
+	return getAWSParameter(ConfigFile.AWS_FINNHUB)
 }
 
 func getAWSParameter(parameterName string) (string, error) {

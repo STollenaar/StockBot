@@ -3,6 +3,7 @@ package stockcommand
 import (
 	"context"
 	"fmt"
+	"log"
 	"log/slog"
 
 	finnhub "github.com/Finnhub-Stock-API/finnhub-go/v2"
@@ -26,7 +27,13 @@ type StockCommand struct {
 
 func init() {
 	cfg := finnhub.NewConfiguration()
-	cfg.AddDefaultHeader("X-Finnhub-Token", util.ConfigFile.FINNHUB)
+	token, err := util.GetFinnhub()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cfg.AddDefaultHeader("X-Finnhub-Token", token)
 	finnhubClient = finnhub.NewAPIClient(cfg).DefaultApi
 }
 
