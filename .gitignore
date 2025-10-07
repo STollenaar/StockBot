@@ -13,3 +13,4 @@ volumes/
 __pycache__/
 venv/
 tools/charts/chart.html
+vendor/

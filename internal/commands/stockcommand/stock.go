@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
-	yfa "github.com/oscarli916/yahoo-finance-api"
 	"github.com/stollenaar/stockbot/internal/util"
+	"github.com/stollenaar/stockbot/internal/util/yfa"
 )
 
 var (
@@ -24,7 +25,7 @@ type StockCommand struct {
 }
 
 func (s StockCommand) Handler(event *events.ApplicationCommandInteractionCreate) {
-	err := event.DeferCreateMessage(true)
+	err := event.DeferCreateMessage(util.ConfigFile.SetEphemeral() == discord.MessageFlagEphemeral)
 
 	if err != nil {
 		slog.Error("Error deferring: ", slog.Any("err", err))
@@ -70,6 +71,7 @@ func showHandler(args discord.SlashCommandInteractionData) (embeds []discord.Emb
 	ticker := yfa.NewTicker(symbol)
 	// get the latest PriceData
 	info, err := ticker.Info()
+
 	if err != nil {
 		slog.Error("Error fetching stock", slog.Any("err", err))
 		return
@@ -85,6 +87,25 @@ func showHandler(args discord.SlashCommandInteractionData) (embeds []discord.Emb
 		return
 	}
 
+	var start, end time.Time
+	end = time.Now()
+	start = end.AddDate(-1, 0, 0)
+
+	if start.Weekday() == time.Saturday {
+		start = start.AddDate(0, 0, -1)
+	} else if start.Weekday() == time.Sunday {
+		start = start.AddDate(0, 0, -2)
+	}
+
+	hist, err := ticker.History(yfa.HistoryQuery{
+		Start:    start.Format("2006-01-02"),
+		End:      fmt.Sprintf("%d", end.Unix()),
+		Interval: "1d",
+	})
+	if err != nil {
+		slog.Error("Error getting history", slog.Any("err", err))
+	}
+
 	embed.Title = info.LongName
 	embed.Fields = append(embed.Fields,
 		discord.EmbedField{
@@ -92,11 +113,20 @@ func showHandler(args discord.SlashCommandInteractionData) (embeds []discord.Emb
 			Value:  fmt.Sprintf("%s %s %.2f", info.Currency, info.CurrencySymbol, info.RegularMarketPrice.Raw),
 			Inline: util.Pointer(true),
 		},
-
 		discord.EmbedField{
-			Name:  "Dialy Change",
-			Value: info.RegularMarketChangePercent.Fmt,
+			Name:   "Exchange",
+			Value:  info.Exchange,
+			Inline: util.Pointer(true),
 		},
+		discord.EmbedField{},
+		discord.EmbedField{
+			Name:   "Dialy % Change",
+			Value:  info.RegularMarketChangePercent.Fmt,
+			Inline: util.Pointer(true),
+		},
+		periodChange("1wk", hist),
+		periodChange("1mo", hist),
+		periodChange("1y", hist),
 	)
 	if info.RegularMarketChangePercent.Raw > 0 {
 		embed.Color = 5763719
@@ -105,12 +135,61 @@ func showHandler(args discord.SlashCommandInteractionData) (embeds []discord.Emb
 	}
 	embeds = append(embeds, embed)
 	return
+}
 
-	// var container discord.ContainerComponent
-	// container.Components = append(container.Components,
-	// 	discord.TextDisplayComponent{
-	// 		Content: fmt.Sprintf("**Name:** %s\n**Maker Price:** %.2f\n**Market Change:** (%.2f%%)", info.LongName, info.RegularMarketPrice.Raw, info.RegularMarketChangePercent.Raw),
-	// 	})
+func periodChange(period string, hist map[string]yfa.PriceData) discord.EmbedField {
+	var label string
+	var start, end time.Time
+	end = time.Now()
 
-	// components = append(components, container)
+	switch period {
+	case "1wk":
+		start = end.AddDate(0, 0, -7)
+		label = "Weekly % Change"
+	case "1mo":
+		start = end.AddDate(0, -1, -1)
+		label = "Monthly % Change"
+	case "1y":
+		start = end.AddDate(-1, 0, 0)
+		label = "Yearly % Change"
+	default:
+		return discord.EmbedField{}
+	}
+
+	if start.Weekday() == time.Saturday {
+		start = start.AddDate(0, 0, -1)
+	} else if start.Weekday() == time.Sunday {
+		start = start.AddDate(0, 0, -2)
+	}
+
+	if _, ok := hist[start.Format("2006-01-02")]; !ok {
+		return discord.EmbedField{
+			Name:  label,
+			Value: "N/A",
+		}
+	}
+
+	if _, ok := hist[end.Format("2006-01-02")]; !ok {
+		return discord.EmbedField{
+			Name:  label,
+			Value: "N/A",
+		}
+	}
+
+	if len(hist) < 2 {
+		return discord.EmbedField{
+			Name:  label,
+			Value: "N/A",
+		}
+	}
+
+	startPrice := hist[start.Format("2006-01-02")].Close
+	endPrice := hist[end.Format("2006-01-02")].Close
+	percentChange := ((endPrice - startPrice) / startPrice) * 100
+
+	return discord.EmbedField{
+		Name:   label,
+		Value:  fmt.Sprintf("%.2f%%", percentChange),
+		Inline: util.Pointer(true),
+	}
 }
