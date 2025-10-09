@@ -5,7 +5,9 @@ import (
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
+	"github.com/stollenaar/stockbot/internal/commands/portfoliocommand"
 	"github.com/stollenaar/stockbot/internal/commands/stockcommand"
+	"github.com/stollenaar/stockbot/internal/commands/watchcommand"
 	"github.com/stollenaar/stockbot/internal/util"
 )
 
@@ -15,7 +17,7 @@ type CommandI interface {
 }
 
 var (
-	Commands            = []CommandI{stockcommand.StockCmd}
+	Commands            = []CommandI{stockcommand.StockCmd, watchcommand.WatchCmd, portfoliocommand.PortfolioCmd}
 	ApplicationCommands []discord.ApplicationCommandCreate
 	CommandHandlers     = make(map[string]func(e *events.ApplicationCommandInteractionCreate))
 	ModalSubmitHandlers = make(map[string]func(e *events.ModalSubmitInteractionCreate))

@@ -34,18 +34,11 @@ func (s StockCommand) Handler(event *events.ApplicationCommandInteractionCreate)
 
 	sub := event.SlashCommandInteractionData()
 
-	var components []discord.LayoutComponent
-	var embeds []discord.Embed
 	switch *sub.SubCommandName {
 	case "show":
-		embeds = showHandler(sub)
-	}
-	_, err = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
-		Embeds: &embeds,
-		// Flags:  util.ConfigFile.SetComponentV2Flags(),
-	})
-	if err != nil {
-		slog.Error("Error editing the response:", slog.Any("err", err), slog.Any(". With body:", components))
+		showHandler(sub, event)
+	case "alert":
+
 	}
 }
 
@@ -65,9 +58,19 @@ func (s StockCommand) CreateCommandArguments() []discord.ApplicationCommandOptio
 	}
 }
 
-func showHandler(args discord.SlashCommandInteractionData) (embeds []discord.Embed) {
+func showHandler(args discord.SlashCommandInteractionData, event *events.ApplicationCommandInteractionCreate) {
 	symbol := strings.ToUpper(args.Options["symbol"].String())
+	embeds := getShowEmbed(symbol)
 
+	_, err := event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
+		Embeds: &embeds,
+	})
+	if err != nil {
+		slog.Error("Error editing the response:", slog.Any("err", err), slog.Any(". With body:", embeds))
+	}
+}
+
+func getShowEmbed(symbol string) (embeds []discord.Embed) {
 	ticker := yfa.NewTicker(symbol)
 	// get the latest PriceData
 	info, err := ticker.Info()
@@ -133,7 +136,8 @@ func showHandler(args discord.SlashCommandInteractionData) (embeds []discord.Emb
 	} else {
 		embed.Color = 15548997
 	}
-	embeds = append(embeds, embed)
+
+	embeds = append([]discord.Embed{}, embed)
 	return
 }
 
