@@ -127,9 +127,9 @@ func getShowEmbed(symbol string) (embeds []discord.Embed) {
 			Value:  info.RegularMarketChangePercent.Fmt,
 			Inline: util.Pointer(true),
 		},
-		periodChange("1wk", hist),
-		periodChange("1mo", hist),
-		periodChange("1y", hist),
+		util.PeriodChangeEmbed("1wk", hist),
+		util.PeriodChangeEmbed("1mo", hist),
+		util.PeriodChangeEmbed("1y", hist),
 	)
 	if info.RegularMarketChangePercent.Raw > 0 {
 		embed.Color = 5763719
@@ -139,61 +139,4 @@ func getShowEmbed(symbol string) (embeds []discord.Embed) {
 
 	embeds = append([]discord.Embed{}, embed)
 	return
-}
-
-func periodChange(period string, hist map[string]yfa.PriceData) discord.EmbedField {
-	var label string
-	var start, end time.Time
-	end = time.Now()
-
-	switch period {
-	case "1wk":
-		start = end.AddDate(0, 0, -7)
-		label = "Weekly % Change"
-	case "1mo":
-		start = end.AddDate(0, -1, -1)
-		label = "Monthly % Change"
-	case "1y":
-		start = end.AddDate(-1, 0, 0)
-		label = "Yearly % Change"
-	default:
-		return discord.EmbedField{}
-	}
-
-	if start.Weekday() == time.Saturday {
-		start = start.AddDate(0, 0, -1)
-	} else if start.Weekday() == time.Sunday {
-		start = start.AddDate(0, 0, -2)
-	}
-
-	if _, ok := hist[start.Format("2006-01-02")]; !ok {
-		return discord.EmbedField{
-			Name:  label,
-			Value: "N/A",
-		}
-	}
-
-	if _, ok := hist[end.Format("2006-01-02")]; !ok {
-		return discord.EmbedField{
-			Name:  label,
-			Value: "N/A",
-		}
-	}
-
-	if len(hist) < 2 {
-		return discord.EmbedField{
-			Name:  label,
-			Value: "N/A",
-		}
-	}
-
-	startPrice := hist[start.Format("2006-01-02")].Close
-	endPrice := hist[end.Format("2006-01-02")].Close
-	percentChange := ((endPrice - startPrice) / startPrice) * 100
-
-	return discord.EmbedField{
-		Name:   label,
-		Value:  fmt.Sprintf("%.2f%%", percentChange),
-		Inline: util.Pointer(true),
-	}
 }
