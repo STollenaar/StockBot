@@ -114,7 +114,7 @@ func showHandler(event *events.ApplicationCommandInteractionCreate) {
 		}
 		return
 	}
-	components, files := generateComponents(portfolios)
+	components, files := generateComponents("1y", portfolios)
 
 	_, err = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
 		Components: &components,
@@ -195,7 +195,7 @@ func (s PortfolioCommand) CreateCommandArguments() []discord.ApplicationCommandO
 	}
 }
 
-func generateComponents(portfolio []database.Portfolio) (components []discord.LayoutComponent, files []*discord.File) {
+func generateComponents(period string, portfolio []database.Portfolio) (components []discord.LayoutComponent, files []*discord.File) {
 	for _, item := range portfolio {
 
 		ticker := yfa.NewTicker(item.Symbol)
@@ -207,28 +207,14 @@ func generateComponents(portfolio []database.Portfolio) (components []discord.La
 			continue
 		}
 
-		var start, end time.Time
-		end = time.Now()
-		start = end.AddDate(-1, 0, 0)
-
-		if start.Weekday() == time.Saturday {
-			start = start.AddDate(0, 0, -1)
-		} else if start.Weekday() == time.Sunday {
-			start = start.AddDate(0, 0, -2)
-		}
-
-		hist, err := ticker.History(yfa.HistoryQuery{
-			Start:    start.Format("2006-01-02"),
-			End:      fmt.Sprintf("%d", end.Unix()),
-			Interval: "1d",
-		})
+		hist, err := util.FetchHistory(ticker, period)
 
 		if err != nil {
 			slog.Error("Error fetching history", slog.Any("err", err))
 			continue
 		}
 
-		chart := generateLineChart(hist, item.Symbol)
+		chart := generateLineChart(hist, info)
 		files = append(files, chart)
 		shares := fmt.Sprintf("%.2f", item.Shares)
 
@@ -253,6 +239,20 @@ func generateComponents(portfolio []database.Portfolio) (components []discord.La
 							},
 						},
 					},
+					discord.ActionRowComponent{
+						Components: []discord.InteractiveComponent{
+							discord.ButtonComponent{
+								CustomID: fmt.Sprintf("%s;%s;-", info.Symbol, "1y"),
+								Style:    discord.ButtonStylePrimary,
+								Label:    "-",
+							},
+							discord.ButtonComponent{
+								CustomID: fmt.Sprintf("%s;%s;+", info.Symbol, "1y"),
+								Style:    discord.ButtonStylePrimary,
+								Label:    "+",
+							},
+						},
+					},
 				},
 			},
 		)
@@ -260,7 +260,7 @@ func generateComponents(portfolio []database.Portfolio) (components []discord.La
 	return
 }
 
-func generateLineChart(hist map[string]yfa.PriceData, symbol string) *discord.File {
+func generateLineChart(hist map[string]yfa.PriceData, info yfa.YahooTickerInfo) *discord.File {
 	t := time.Now()
 	fileName := fmt.Sprintf("%d.png", t.UnixNano())
 	var image []byte
@@ -274,9 +274,22 @@ func generateLineChart(hist map[string]yfa.PriceData, symbol string) *discord.Fi
 		// Don't forget disable the Animation
 		charts.WithAnimation(false),
 		charts.WithTitleOpts(opts.Title{
-			Title: symbol,
+			Title: info.Symbol,
 			Right: "40%",
 		}),
+		charts.WithYAxisOpts(
+			opts.YAxis{
+				Name:         fmt.Sprintf("Price (%s)", info.Currency),
+				Position:     "left",
+				NameLocation: "middle",
+				NameGap:      25,
+			},
+		),
+		charts.WithXAxisOpts(
+			opts.XAxis{
+				Name: "Date",
+			},
+		),
 		charts.WithLegendOpts(opts.Legend{Show: opts.Bool(false)}),
 	)
 	axes := slices.Collect(maps.Keys(hist))
@@ -288,7 +301,7 @@ func generateLineChart(hist map[string]yfa.PriceData, symbol string) *discord.Fi
 	}
 
 	line.SetXAxis(axes).
-		AddSeries("Date", genLineData(values)).
+		AddSeries("Date", genLineData(info.Symbol, values)).
 		SetSeriesOptions(
 			charts.WithLineChartOpts(opts.LineChart{
 				ShowSymbol: opts.Bool(false),
@@ -314,9 +327,9 @@ func generateLineChart(hist map[string]yfa.PriceData, symbol string) *discord.Fi
 	}
 }
 
-func genLineData(values []yfa.PriceData) (rs []opts.LineData) {
+func genLineData(symbol string, values []yfa.PriceData) (rs []opts.LineData) {
 	for _, data := range values {
-		rs = append(rs, opts.LineData{Value: data.Close})
+		rs = append(rs, opts.LineData{Name: symbol, Value: data.Close})
 	}
 	return
 }

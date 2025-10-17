@@ -103,7 +103,7 @@ func GetSeparator() discord.SeparatorComponent {
 }
 
 func Pointer[T any](d T) *T {
-    return &d
+	return &d
 }
 
 func PeriodChangeEmbed(period string, hist map[string]yfa.PriceData) discord.EmbedField {
@@ -118,8 +118,14 @@ func PeriodChangeEmbed(period string, hist map[string]yfa.PriceData) discord.Emb
 	case "1mo":
 		start = end.AddDate(0, -1, -1)
 		label = "Monthly % Change"
+	case "3mo":
+		start = end.AddDate(0, -3, -1)
+		label = "Monthly % Change"
 	case "1y":
 		start = end.AddDate(-1, 0, 0)
+		label = "Yearly % Change"
+	case "5y":
+		start = end.AddDate(-5, 0, 0)
 		label = "Yearly % Change"
 	default:
 		return discord.EmbedField{}
@@ -172,8 +178,12 @@ func PeriodChange(period string, hist map[string]yfa.PriceData) string {
 		start = end.AddDate(0, 0, -7)
 	case "1mo":
 		start = end.AddDate(0, -1, -1)
+	case "3mo":
+		start = end.AddDate(0, -3, -1)
 	case "1y":
 		start = end.AddDate(-1, 0, 0)
+	case "5y":
+		start = end.AddDate(-5, 0, 0)
 	default:
 		return ""
 	}
@@ -201,4 +211,34 @@ func PeriodChange(period string, hist map[string]yfa.PriceData) string {
 	percentChange := ((endPrice - startPrice) / startPrice) * 100
 
 	return fmt.Sprintf("%.2f%%", percentChange)
+}
+
+func FetchHistory(ticker *yfa.Ticker, period string) (map[string]yfa.PriceData, error) {
+	var start, end time.Time
+	end = time.Now()
+
+	switch period {
+	case "1wk":
+		start = end.AddDate(0, 0, -7)
+	case "1mo":
+		start = end.AddDate(0, -1, -1)
+	case "3mo":
+		start = end.AddDate(0, -3, -1)
+	case "1y":
+		start = end.AddDate(-1, 0, 0)
+	case "5y":
+		start = end.AddDate(-5, 0, 0)
+	}
+
+	if start.Weekday() == time.Saturday {
+		start = start.AddDate(0, 0, -1)
+	} else if start.Weekday() == time.Sunday {
+		start = start.AddDate(0, 0, -2)
+	}
+
+	return ticker.History(yfa.HistoryQuery{
+		Start:    start.Format("2006-01-02"),
+		End:      fmt.Sprintf("%d", end.Unix()),
+		Interval: "1d",
+	})
 }
