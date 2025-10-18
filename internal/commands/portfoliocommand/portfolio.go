@@ -7,11 +7,13 @@ import (
 	"maps"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
+	"github.com/disgoorg/snowflake/v2"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/go-echarts/snapshot-chromedp/render"
@@ -21,6 +23,8 @@ import (
 )
 
 var (
+	PERIODS = []string{"5y", "1y", "3mo", "1mo", "1wk"}
+
 	PortfolioCmd = PortfolioCommand{
 		Name:        "portfolio",
 		Description: "Portfolio interaction command",
@@ -91,7 +95,7 @@ func addHandler(args discord.SlashCommandInteractionData, event *events.Applicat
 }
 
 func showHandler(event *events.ApplicationCommandInteractionCreate) {
-	portfolios, err := database.GetPortfolio(event.User().ID.String())
+	portfolios, err := database.GetCompletePortfolio(event.User().ID.String())
 
 	if err != nil {
 		slog.Error("Error fetching portfolio:", slog.Any("err", err))
@@ -195,72 +199,143 @@ func (s PortfolioCommand) CreateCommandArguments() []discord.ApplicationCommandO
 	}
 }
 
-func generateComponents(period string, portfolio []database.Portfolio) (components []discord.LayoutComponent, files []*discord.File) {
-	for _, item := range portfolio {
+func (s PortfolioCommand) ComponentHandler(event *events.ComponentInteractionCreate) {
+	if event.Message.Interaction.User.ID != event.Member().User.ID {
+		return
+	}
 
-		ticker := yfa.NewTicker(item.Symbol)
-		// get the latest PriceData
-		info, err := ticker.Info()
+	err := event.DeferUpdateMessage()
 
-		if err != nil {
-			slog.Error("Error fetching stock", slog.Any("err", err))
-			continue
-		}
+	if err != nil {
+		slog.Error("Error deferring: ", slog.Any("err", err))
+		return
+	}
 
-		hist, err := util.FetchHistory(ticker, period)
+	components := event.Message.Components
+	details := strings.Split(event.Data.CustomID(), ";")
 
-		if err != nil {
-			slog.Error("Error fetching history", slog.Any("err", err))
-			continue
-		}
+	pIndex, _ := strconv.Atoi(details[1])
+	portfolio, err := database.GetPortfolio(event.Member().User.ID.String(), details[2])
 
-		chart := generateLineChart(hist, info)
-		files = append(files, chart)
-		shares := fmt.Sprintf("%.2f", item.Shares)
+	if err != nil {
+		slog.Error("Error fetching portfolio: ", slog.Any("err", err))
+		return
+	}
 
-		components = append(components,
-			discord.ContainerComponent{
-				Components: []discord.ContainerSubComponent{
-					discord.TextDisplayComponent{
-						Content: fmt.Sprintf("# %s", item.Symbol),
-					},
-					discord.SectionComponent{
-						Components: []discord.SectionSubComponent{
-							discord.TextDisplayComponent{
-								Content: fmt.Sprintf("**Amount of Shares:** %s\n~~%s~~", shares, strings.Repeat(" ", 18+len(shares))),
-							},
-							discord.TextDisplayComponent{
-								Content: fmt.Sprintf("**Daily %% Change:** %s\n**Weekly %% Change:** %s\n**Yearly %% Change:** %s", info.RegularMarketChangePercent.Fmt, util.PeriodChange("1wk", hist), util.PeriodChange("1y", hist)),
-							},
-						},
-						Accessory: discord.ThumbnailComponent{
-							Media: discord.UnfurledMediaItem{
-								URL: fmt.Sprintf("attachment://%s", chart.Name),
-							},
-						},
-					},
-					discord.ActionRowComponent{
-						Components: []discord.InteractiveComponent{
-							discord.ButtonComponent{
-								CustomID: fmt.Sprintf("%s;%s;-", info.Symbol, "1y"),
-								Style:    discord.ButtonStylePrimary,
-								Label:    "-",
-							},
-							discord.ButtonComponent{
-								CustomID: fmt.Sprintf("%s;%s;+", info.Symbol, "1y"),
-								Style:    discord.ButtonStylePrimary,
-								Label:    "+",
-							},
-						},
-					},
+	component, file := generateComponent(pIndex, details[3], portfolio)
+	components[pIndex] = component
+
+	var attachments []discord.AttachmentUpdate
+	for i, attachment := range components {
+		if i != pIndex {
+			id := attachment.(discord.ContainerComponent).Components[1].(discord.SectionComponent).Accessory.(discord.ThumbnailComponent).Media.AttachmentID
+			if id == snowflake.MustParse("0"){
+				continue
+			}
+			attachments = append(attachments,
+				discord.AttachmentKeep{
+					ID: id,
 				},
-			},
-		)
+			)
+		}
+	}
+
+	_, err = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
+		Components:  &components,
+		Attachments: &attachments,
+		Files:       []*discord.File{file},
+		Flags:       util.ConfigFile.SetComponentV2Flags(),
+	})
+	if err != nil {
+		slog.Error("Error editing the response:", slog.Any("err", err), slog.Any(". With body:", components))
+	}
+
+}
+
+func generateComponents(period string, portfolio []database.Portfolio) (components []discord.LayoutComponent, files []*discord.File) {
+	for index, item := range portfolio {
+		component, file := generateComponent(index, period, item)
+		components = append(components, component)
+		files = append(files, file)
 	}
 	return
 }
 
-func generateLineChart(hist map[string]yfa.PriceData, info yfa.YahooTickerInfo) *discord.File {
+func generateComponent(pIndex int, period string, portfolio database.Portfolio) (component discord.LayoutComponent, file *discord.File) {
+
+	ticker := yfa.NewTicker(portfolio.Symbol)
+	// get the latest PriceData
+	info, err := ticker.Info()
+
+	if err != nil {
+		slog.Error("Error fetching stock", slog.Any("err", err))
+		return
+	}
+
+	hist, err := util.FetchHistory(ticker, period)
+
+	if err != nil {
+		slog.Error("Error fetching history", slog.Any("err", err))
+		return
+	}
+
+	file = generateLineChart(hist, info, period)
+	shares := fmt.Sprintf("%.2f", portfolio.Shares)
+
+	var prevPeriod, nextPeriod string
+
+	index := slices.Index(PERIODS, period)
+
+	if index != -1 {
+		if index > 0 {
+			prevPeriod = PERIODS[index-1]
+		}
+		if index < len(PERIODS)-1 {
+			nextPeriod = PERIODS[index+1]
+		}
+	}
+
+	component = discord.ContainerComponent{
+		ID: pIndex,
+		Components: []discord.ContainerSubComponent{
+			discord.TextDisplayComponent{
+				Content: fmt.Sprintf("# %s", portfolio.Symbol),
+			},
+			discord.SectionComponent{
+				Components: []discord.SectionSubComponent{
+					discord.TextDisplayComponent{
+						Content: fmt.Sprintf("**Amount of Shares:** %s\n~~%s~~", shares, strings.Repeat(" ", 18+len(shares))),
+					},
+					discord.TextDisplayComponent{
+						Content: fmt.Sprintf("**Daily %% Change:** %s\n**Weekly %% Change:** %s\n**Yearly %% Change:** %s", info.RegularMarketChangePercent.Fmt, util.PeriodChange("1wk", hist), util.PeriodChange("1y", hist)),
+					},
+				},
+				Accessory: discord.ThumbnailComponent{
+					Media: discord.UnfurledMediaItem{
+						URL: fmt.Sprintf("attachment://%s", file.Name),
+					},
+				},
+			},
+			discord.ActionRowComponent{
+				Components: []discord.InteractiveComponent{
+					discord.ButtonComponent{
+						CustomID: fmt.Sprintf("portfolio;%d;%s;%s;-", pIndex, info.Symbol, prevPeriod),
+						Style:    discord.ButtonStylePrimary,
+						Label:    "-",
+					},
+					discord.ButtonComponent{
+						CustomID: fmt.Sprintf("portfolio;%d;%s;%s;+", pIndex, info.Symbol, nextPeriod),
+						Style:    discord.ButtonStylePrimary,
+						Label:    "+",
+					},
+				},
+			},
+		},
+	}
+	return
+}
+
+func generateLineChart(hist map[string]yfa.PriceData, info yfa.YahooTickerInfo, period string) *discord.File {
 	t := time.Now()
 	fileName := fmt.Sprintf("%d.png", t.UnixNano())
 	var image []byte
@@ -274,7 +349,7 @@ func generateLineChart(hist map[string]yfa.PriceData, info yfa.YahooTickerInfo) 
 		// Don't forget disable the Animation
 		charts.WithAnimation(false),
 		charts.WithTitleOpts(opts.Title{
-			Title: info.Symbol,
+			Title: fmt.Sprintf("%s over %s", info.Symbol, periodToFriendlyName(period)),
 			Right: "40%",
 		}),
 		charts.WithYAxisOpts(
@@ -287,7 +362,10 @@ func generateLineChart(hist map[string]yfa.PriceData, info yfa.YahooTickerInfo) 
 		),
 		charts.WithXAxisOpts(
 			opts.XAxis{
-				Name: "Date",
+				Name:         "Date",
+				Position:     "bottom",
+				NameLocation: "center",
+				NameGap:      25,
 			},
 		),
 		charts.WithLegendOpts(opts.Legend{Show: opts.Bool(false)}),
@@ -332,4 +410,21 @@ func genLineData(symbol string, values []yfa.PriceData) (rs []opts.LineData) {
 		rs = append(rs, opts.LineData{Name: symbol, Value: data.Close})
 	}
 	return
+}
+
+func periodToFriendlyName(period string) string {
+	switch period {
+	case "1wk":
+		return "1 Week"
+	case "1mo":
+		return "1 Month"
+	case "3mo":
+		return "3 Month"
+	case "1y":
+		return "1 Year"
+	case "5y":
+		return "5 Year"
+	default:
+		return ""
+	}
 }

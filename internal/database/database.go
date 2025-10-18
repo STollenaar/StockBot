@@ -144,7 +144,7 @@ type WatchList struct {
 	Direction   bool
 }
 
-func GetPortfolio(userID string) (portfolio []Portfolio, err error) {
+func GetCompletePortfolio(userID string) (portfolio []Portfolio, err error) {
 	rows, err := duckdbClient.Query(`SELECT * FROM portfolios WHERE user_id = ?;`, userID)
 	if err != nil {
 		return nil, err
@@ -160,6 +160,16 @@ func GetPortfolio(userID string) (portfolio []Portfolio, err error) {
 		portfolio = append(portfolio, port)
 	}
 	return
+}
+
+func GetPortfolio(userID, symbol string) (portfolio Portfolio, err error) {
+	rows := duckdbClient.QueryRow(`SELECT * FROM portfolios WHERE user_id = ? AND symbol = ?;`, userID, symbol)
+
+	var port Portfolio
+
+	err = rows.Scan(&port.UserID, &port.Symbol, &port.Shares)
+
+	return port, err
 }
 
 func RemovePortfolio(userID, symbol string) error {
