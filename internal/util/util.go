@@ -1,20 +1,33 @@
 package util
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log/slog"
+	"maps"
 	"net/http"
+	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"time"
 
 	"github.com/disgoorg/disgo/discord"
+	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/opts"
+	"github.com/go-echarts/snapshot-chromedp/render"
 	"github.com/stollenaar/stockbot/internal/util/yfa"
 )
 
 const (
 	DISCORD_EMOJI_URL       = "https://cdn.discordapp.com/emojis/%s.%s"
 	DiscordEpoch      int64 = 1420070400000
+)
+
+var (
+	WORKING_DIR = os.Getenv("PWD")
 )
 
 // Contains check slice contains want string
@@ -194,6 +207,12 @@ func PeriodChange(period string, hist map[string]yfa.PriceData) string {
 		start = start.AddDate(0, 0, -2)
 	}
 
+	if end.Weekday() == time.Saturday {
+		end = end.AddDate(0, 0, -1)
+	} else if end.Weekday() == time.Sunday {
+		end = end.AddDate(0, 0, -2)
+	}
+
 	if _, ok := hist[start.Format("2006-01-02")]; !ok {
 		return "N/A"
 	}
@@ -241,4 +260,110 @@ func FetchHistory(ticker *yfa.Ticker, period string) (map[string]yfa.PriceData, 
 		End:      fmt.Sprintf("%d", end.Unix()),
 		Interval: "1d",
 	})
+}
+
+func GenerateLineChart(hist map[string]yfa.PriceData, info yfa.YahooTickerInfo, period string) *discord.File {
+	t := time.Now()
+	tmp, err := os.CreateTemp(WORKING_DIR, fmt.Sprintf("chart-%d-*.png", t.UnixNano()))
+	if err != nil {
+		slog.Error("Error creating temp file", slog.Any("err", err))
+		return nil
+	}
+	tmpName := tmp.Name()
+	tmp.Close()
+
+	line := charts.NewLine()
+	line.SetGlobalOptions(
+		charts.WithInitializationOpts(opts.Initialization{
+			BackgroundColor: "#FFFFFF",
+			Width:           "100%",
+		}),
+		// Don't forget disable the Animation
+		charts.WithAnimation(false),
+		charts.WithTitleOpts(opts.Title{
+			Title: fmt.Sprintf("%s over %s", info.Symbol, periodToFriendlyName(period)),
+			Right: "40%",
+		}),
+		charts.WithYAxisOpts(
+			opts.YAxis{
+				Name:         fmt.Sprintf("Price (%s)", info.Currency),
+				Position:     "left",
+				NameLocation: "middle",
+				NameGap:      25,
+			},
+		),
+		charts.WithXAxisOpts(
+			opts.XAxis{
+				Name:         "Date",
+				Position:     "bottom",
+				NameLocation: "center",
+				NameGap:      25,
+			},
+		),
+		charts.WithLegendOpts(opts.Legend{Show: opts.Bool(false)}),
+	)
+	axes := slices.Collect(maps.Keys(hist))
+	slices.Sort(axes)
+
+	var values []yfa.PriceData
+	for _, k := range axes {
+		values = append(values, hist[k])
+	}
+
+	line.SetXAxis(axes).
+		AddSeries("Date", genLineData(info.Symbol, values)).
+		SetSeriesOptions(
+			charts.WithLineChartOpts(opts.LineChart{
+				ShowSymbol: opts.Bool(false),
+			}),
+			charts.WithLabelOpts(opts.Label{
+				Show: opts.Bool(true),
+			}),
+		)
+
+	err = render.MakeChartSnapshot(line.RenderContent(), tmpName)
+	if err != nil {
+		slog.Error("Error rendering image", slog.Any("err", err))
+		os.Remove(tmpName)
+		return nil
+	}
+
+	image, err := os.ReadFile(tmpName)
+	os.Remove(tmpName)
+	if err != nil {
+		slog.Error("Error reading temp image", slog.Any("err", err))
+		return nil
+	}
+
+	imgReader := bytes.NewReader(image)
+
+	return &discord.File{
+		Name:   filepath.Base(tmpName),
+		Reader: imgReader,
+	}
+}
+
+func genLineData(symbol string, values []yfa.PriceData) (rs []opts.LineData) {
+	rs = make([]opts.LineData, 0, len(values))
+	for _, data := range values {
+		rs = append(rs, opts.LineData{Name: symbol, Value: data.Close})
+	}
+	return
+}
+
+func periodToFriendlyName(period string) string {
+	switch period {
+	case "1wk":
+		return "1 Week"
+	case "1mo":
+		return "1 Month"
+	case "3mo":
+		return "3 Month"
+	case "1y":
+		return "1 Year"
+	case "5y":
+		return "5 Year"
+	default:
+		return ""
+	}
 }

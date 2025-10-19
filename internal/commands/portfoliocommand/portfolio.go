@@ -1,11 +1,8 @@
 package portfoliocommand
 
 import (
-	"bytes"
 	"fmt"
 	"log/slog"
-	"maps"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,9 +11,6 @@ import (
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/snowflake/v2"
-	"github.com/go-echarts/go-echarts/v2/charts"
-	"github.com/go-echarts/go-echarts/v2/opts"
-	"github.com/go-echarts/snapshot-chromedp/render"
 	"github.com/stollenaar/stockbot/internal/database"
 	"github.com/stollenaar/stockbot/internal/util"
 	"github.com/stollenaar/stockbot/internal/util/yfa"
@@ -253,12 +247,43 @@ func (s PortfolioCommand) ComponentHandler(event *events.ComponentInteractionCre
 }
 
 func generateComponents(period string, portfolio []database.Portfolio) (components []discord.LayoutComponent, files []*discord.File) {
-	for index, item := range portfolio {
-		component, file := generateComponent(index, period, item)
-		components = append(components, component)
-		files = append(files, file)
-	}
-	return
+    // bounded concurrency
+    const maxConcurrent = 4
+    sem := make(chan struct{}, maxConcurrent)
+    type res struct {
+        idx       int
+        component discord.LayoutComponent
+        file      *discord.File
+    }
+    out := make(chan res, len(portfolio))
+
+    for i, p := range portfolio {
+        sem <- struct{}{}
+        go func(idx int, item database.Portfolio) {
+            defer func() { <-sem }()
+            component, file := generateComponent(idx, period, item)
+            out <- res{idx: idx, component: component, file: file}
+        }(i, p)
+    }
+
+    // collect results in order
+    results := make([]res, len(portfolio))
+    for i := 0; i < len(portfolio); i++ {
+        r := <-out
+        results[r.idx] = r
+    }
+    close(out)
+
+    components = make([]discord.LayoutComponent, 0, len(portfolio))
+    files = make([]*discord.File, 0, len(portfolio))
+    for _, r := range results {
+		if r.component == nil {
+			continue
+		}
+        components = append(components, r.component)
+        files = append(files, r.file)
+    }
+    return
 }
 
 func generateComponent(pIndex int, period string, portfolio database.Portfolio) (component discord.LayoutComponent, file *discord.File) {
@@ -279,7 +304,7 @@ func generateComponent(pIndex int, period string, portfolio database.Portfolio) 
 		return
 	}
 
-	file = generateLineChart(hist, info, period)
+	file = util.GenerateLineChart(hist, info, period)
 	shares := fmt.Sprintf("%.2f", portfolio.Shares)
 
 	var prevPeriod, nextPeriod string
@@ -333,98 +358,4 @@ func generateComponent(pIndex int, period string, portfolio database.Portfolio) 
 		},
 	}
 	return
-}
-
-func generateLineChart(hist map[string]yfa.PriceData, info yfa.YahooTickerInfo, period string) *discord.File {
-	t := time.Now()
-	fileName := fmt.Sprintf("%d.png", t.UnixNano())
-	var image []byte
-
-	line := charts.NewLine()
-	line.SetGlobalOptions(
-		charts.WithInitializationOpts(opts.Initialization{
-			BackgroundColor: "#FFFFFF",
-			Width:           "100%",
-		}),
-		// Don't forget disable the Animation
-		charts.WithAnimation(false),
-		charts.WithTitleOpts(opts.Title{
-			Title: fmt.Sprintf("%s over %s", info.Symbol, periodToFriendlyName(period)),
-			Right: "40%",
-		}),
-		charts.WithYAxisOpts(
-			opts.YAxis{
-				Name:         fmt.Sprintf("Price (%s)", info.Currency),
-				Position:     "left",
-				NameLocation: "middle",
-				NameGap:      25,
-			},
-		),
-		charts.WithXAxisOpts(
-			opts.XAxis{
-				Name:         "Date",
-				Position:     "bottom",
-				NameLocation: "center",
-				NameGap:      25,
-			},
-		),
-		charts.WithLegendOpts(opts.Legend{Show: opts.Bool(false)}),
-	)
-	axes := slices.Collect(maps.Keys(hist))
-	slices.Sort(axes)
-
-	var values []yfa.PriceData
-	for _, k := range axes {
-		values = append(values, hist[k])
-	}
-
-	line.SetXAxis(axes).
-		AddSeries("Date", genLineData(info.Symbol, values)).
-		SetSeriesOptions(
-			charts.WithLineChartOpts(opts.LineChart{
-				ShowSymbol: opts.Bool(false),
-			}),
-			charts.WithLabelOpts(opts.Label{
-				Show: opts.Bool(true),
-			}),
-		)
-
-	err := render.MakeChartSnapshot(line.RenderContent(), fileName)
-	if err != nil {
-		slog.Error("Error rendering image", slog.Any("err", err))
-		return nil
-	}
-
-	image, _ = os.ReadFile(fileName)
-	os.Remove(fileName)
-	imgReader := bytes.NewReader(image)
-
-	return &discord.File{
-		Name:   fileName,
-		Reader: imgReader,
-	}
-}
-
-func genLineData(symbol string, values []yfa.PriceData) (rs []opts.LineData) {
-	for _, data := range values {
-		rs = append(rs, opts.LineData{Name: symbol, Value: data.Close})
-	}
-	return
-}
-
-func periodToFriendlyName(period string) string {
-	switch period {
-	case "1wk":
-		return "1 Week"
-	case "1mo":
-		return "1 Month"
-	case "3mo":
-		return "3 Month"
-	case "1y":
-		return "1 Year"
-	case "5y":
-		return "5 Year"
-	default:
-		return ""
-	}
 }
