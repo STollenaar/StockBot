@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
@@ -58,15 +57,45 @@ func (s StockCommand) CreateCommandArguments() []discord.ApplicationCommandOptio
 	}
 }
 
-func showHandler(args discord.SlashCommandInteractionData, event *events.ApplicationCommandInteractionCreate) {
-	symbol := strings.ToUpper(args.Options["symbol"].String())
-	embeds := getShowEmbed(symbol)
+func (s StockCommand) ComponentHandler(event *events.ComponentInteractionCreate) {
+	if event.Message.Interaction.User.ID != event.Member().User.ID {
+		return
+	}
 
-	_, err := event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
-		Embeds: &embeds,
+	err := event.DeferUpdateMessage()
+
+	if err != nil {
+		slog.Error("Error deferring: ", slog.Any("err", err))
+		return
+	}
+
+	details := strings.Split(event.Data.CustomID(), ";")
+
+	component, file := generateComponent(details[1], details[2])
+
+	_, err = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
+		Components: &[]discord.LayoutComponent{component},
+		Files:      []*discord.File{file},
+		Flags:      util.ConfigFile.SetComponentV2Flags(),
 	})
 	if err != nil {
-		slog.Error("Error editing the response:", slog.Any("err", err), slog.Any(". With body:", embeds))
+		slog.Error("Error editing the response:", slog.Any("err", err), slog.Any(". With body:", component))
+	}
+}
+
+func showHandler(args discord.SlashCommandInteractionData, event *events.ApplicationCommandInteractionCreate) {
+	symbol := strings.ToUpper(args.Options["symbol"].String())
+	// embeds := getShowEmbed(symbol)
+	component, file := generateComponent(symbol, "1y")
+
+	_, err := event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(), discord.MessageUpdate{
+		// Embeds: &embeds,
+		Components: &[]discord.LayoutComponent{component},
+		Files:      []*discord.File{file},
+		Flags:      util.ConfigFile.SetComponentV2Flags(),
+	})
+	if err != nil {
+		slog.Error("Error editing the response:", slog.Any("err", err), slog.Any(". With body:", component))
 	}
 }
 
@@ -90,21 +119,7 @@ func getShowEmbed(symbol string) (embeds []discord.Embed) {
 		return
 	}
 
-	var start, end time.Time
-	end = time.Now()
-	start = end.AddDate(-1, 0, 0)
-
-	if start.Weekday() == time.Saturday {
-		start = start.AddDate(0, 0, -1)
-	} else if start.Weekday() == time.Sunday {
-		start = start.AddDate(0, 0, -2)
-	}
-
-	hist, err := ticker.History(yfa.HistoryQuery{
-		Start:    start.Format("2006-01-02"),
-		End:      fmt.Sprintf("%d", end.Unix()),
-		Interval: "1d",
-	})
+	hist, err := util.FetchHistory(ticker, "1y")
 	if err != nil {
 		slog.Error("Error getting history", slog.Any("err", err))
 	}
@@ -138,5 +153,92 @@ func getShowEmbed(symbol string) (embeds []discord.Embed) {
 	}
 
 	embeds = append([]discord.Embed{}, embed)
+	return
+}
+
+func generateComponent(symbol, period string) (component discord.LayoutComponent, file *discord.File) {
+
+	ticker := yfa.NewTicker(symbol)
+	// get the latest PriceData
+	info, err := ticker.Info()
+
+	if err != nil {
+		slog.Error("Error fetching stock", slog.Any("err", err))
+		return
+	}
+
+	hist, err := util.FetchHistory(ticker, period)
+
+	if err != nil {
+		slog.Error("Error fetching history", slog.Any("err", err))
+		return
+	}
+
+	file = util.GenerateLineChart(hist, info, period)
+
+	var color int
+	if info.RegularMarketChangePercent.Raw > 0 {
+		color = 5763719
+	} else {
+		color = 15548997
+	}
+
+	component = discord.ContainerComponent{
+		AccentColor: color,
+		Components: []discord.ContainerSubComponent{
+			discord.TextDisplayComponent{
+				Content: fmt.Sprintf("# %s", symbol),
+			},
+			discord.SectionComponent{
+				Components: []discord.SectionSubComponent{
+					discord.TextDisplayComponent{
+						Content: fmt.Sprintf("**Daily %% Change**\n%s", info.RegularMarketChangePercent.Fmt),
+					},
+					discord.TextDisplayComponent{
+						Content: fmt.Sprintf("**Weekly %% Change:**\n%s", util.PeriodChange("1wk", hist)),
+					},
+					discord.TextDisplayComponent{
+						Content: fmt.Sprintf("**Yearly %% Change:**\n%s", util.PeriodChange("1y", hist)),
+					},
+				},
+				Accessory: discord.ThumbnailComponent{
+					Media: discord.UnfurledMediaItem{
+						URL: fmt.Sprintf("attachment://%s", file.Name),
+					},
+				},
+			},
+			discord.ActionRowComponent{
+				Components: util.GenerateButtons(
+					[]util.Button{
+						{
+							ID:     fmt.Sprintf("stock;%s;%s", info.Symbol, "1d"),
+							Label:  "Daily",
+							Active: period == "1d",
+						},
+						{
+							ID:     fmt.Sprintf("stock;%s;%s", info.Symbol, "1wk"),
+							Label:  "1 Week",
+							Active: period == "1wk",
+						},
+						{
+							ID:     fmt.Sprintf("stock;%s;%s", info.Symbol, "1mo"),
+							Label:  "1 Month",
+							Active: period == "1mo",
+						},
+						{
+							ID:     fmt.Sprintf("stock;%s;%s", info.Symbol, "3mo"),
+							Label:  "3 Month",
+							Active: period == "3mo",
+						},
+						{
+							ID:     fmt.Sprintf("stock;%s;%s", info.Symbol, "1y"),
+							Label:  "1 Year",
+							Active: period == "1y",
+						},
+					},
+				),
+			},
+		},
+	}
 	return
 }

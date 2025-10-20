@@ -3,7 +3,6 @@ package portfoliocommand
 import (
 	"fmt"
 	"log/slog"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -223,7 +222,7 @@ func (s PortfolioCommand) ComponentHandler(event *events.ComponentInteractionCre
 	for i, attachment := range components {
 		if i != pIndex {
 			id := attachment.(discord.ContainerComponent).Components[1].(discord.SectionComponent).Accessory.(discord.ThumbnailComponent).Media.AttachmentID
-			if id == snowflake.MustParse("0"){
+			if id == snowflake.MustParse("0") {
 				continue
 			}
 			attachments = append(attachments,
@@ -247,43 +246,43 @@ func (s PortfolioCommand) ComponentHandler(event *events.ComponentInteractionCre
 }
 
 func generateComponents(period string, portfolio []database.Portfolio) (components []discord.LayoutComponent, files []*discord.File) {
-    // bounded concurrency
-    const maxConcurrent = 4
-    sem := make(chan struct{}, maxConcurrent)
-    type res struct {
-        idx       int
-        component discord.LayoutComponent
-        file      *discord.File
-    }
-    out := make(chan res, len(portfolio))
+	// bounded concurrency
+	const maxConcurrent = 4
+	sem := make(chan struct{}, maxConcurrent)
+	type res struct {
+		idx       int
+		component discord.LayoutComponent
+		file      *discord.File
+	}
+	out := make(chan res, len(portfolio))
 
-    for i, p := range portfolio {
-        sem <- struct{}{}
-        go func(idx int, item database.Portfolio) {
-            defer func() { <-sem }()
-            component, file := generateComponent(idx, period, item)
-            out <- res{idx: idx, component: component, file: file}
-        }(i, p)
-    }
+	for i, p := range portfolio {
+		sem <- struct{}{}
+		go func(idx int, item database.Portfolio) {
+			defer func() { <-sem }()
+			component, file := generateComponent(idx, period, item)
+			out <- res{idx: idx, component: component, file: file}
+		}(i, p)
+	}
 
-    // collect results in order
-    results := make([]res, len(portfolio))
-    for i := 0; i < len(portfolio); i++ {
-        r := <-out
-        results[r.idx] = r
-    }
-    close(out)
+	// collect results in order
+	results := make([]res, len(portfolio))
+	for i := 0; i < len(portfolio); i++ {
+		r := <-out
+		results[r.idx] = r
+	}
+	close(out)
 
-    components = make([]discord.LayoutComponent, 0, len(portfolio))
-    files = make([]*discord.File, 0, len(portfolio))
-    for _, r := range results {
+	components = make([]discord.LayoutComponent, 0, len(portfolio))
+	files = make([]*discord.File, 0, len(portfolio))
+	for _, r := range results {
 		if r.component == nil {
 			continue
 		}
-        components = append(components, r.component)
-        files = append(files, r.file)
-    }
-    return
+		components = append(components, r.component)
+		files = append(files, r.file)
+	}
+	return
 }
 
 func generateComponent(pIndex int, period string, portfolio database.Portfolio) (component discord.LayoutComponent, file *discord.File) {
@@ -307,21 +306,16 @@ func generateComponent(pIndex int, period string, portfolio database.Portfolio) 
 	file = util.GenerateLineChart(hist, info, period)
 	shares := fmt.Sprintf("%.2f", portfolio.Shares)
 
-	var prevPeriod, nextPeriod string
-
-	index := slices.Index(PERIODS, period)
-
-	if index != -1 {
-		if index > 0 {
-			prevPeriod = PERIODS[index-1]
-		}
-		if index < len(PERIODS)-1 {
-			nextPeriod = PERIODS[index+1]
-		}
+	var color int
+	if info.RegularMarketChangePercent.Raw > 0 {
+		color = 5763719
+	} else {
+		color = 15548997
 	}
 
 	component = discord.ContainerComponent{
-		ID: pIndex,
+		ID:          pIndex,
+		AccentColor: color,
 		Components: []discord.ContainerSubComponent{
 			discord.TextDisplayComponent{
 				Content: fmt.Sprintf("# %s", portfolio.Symbol),
@@ -342,18 +336,35 @@ func generateComponent(pIndex int, period string, portfolio database.Portfolio) 
 				},
 			},
 			discord.ActionRowComponent{
-				Components: []discord.InteractiveComponent{
-					discord.ButtonComponent{
-						CustomID: fmt.Sprintf("portfolio;%d;%s;%s;-", pIndex, info.Symbol, prevPeriod),
-						Style:    discord.ButtonStylePrimary,
-						Label:    "-",
+				Components: util.GenerateButtons(
+					[]util.Button{
+						{
+							ID:     fmt.Sprintf("portfolio;%d;%s;%s", pIndex, info.Symbol, "1d"),
+							Label:  "Daily",
+							Active: period == "1d",
+						},
+						{
+							ID:     fmt.Sprintf("portfolio;%d;%s;%s", pIndex, info.Symbol, "1wk"),
+							Label:  "1 Week",
+							Active: period == "1wk",
+						},
+						{
+							ID:     fmt.Sprintf("portfolio;%d;%s;%s", pIndex, info.Symbol, "1mo"),
+							Label:  "1 Month",
+							Active: period == "1mo",
+						},
+						{
+							ID:     fmt.Sprintf("portfolio;%d;%s;%s", pIndex, info.Symbol, "3mo"),
+							Label:  "3 Month",
+							Active: period == "3mo",
+						},
+						{
+							ID:     fmt.Sprintf("portfolio;%d;%s;%s", pIndex, info.Symbol, "1y"),
+							Label:  "1 Year",
+							Active: period == "1y",
+						},
 					},
-					discord.ButtonComponent{
-						CustomID: fmt.Sprintf("portfolio;%d;%s;%s;+", pIndex, info.Symbol, nextPeriod),
-						Style:    discord.ButtonStylePrimary,
-						Label:    "+",
-					},
-				},
+				),
 			},
 		},
 	}

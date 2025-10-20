@@ -367,3 +367,33 @@ func periodToFriendlyName(period string) string {
 		return ""
 	}
 }
+
+type Button struct {
+	ID    string
+	Label string
+	Active bool
+}
+
+func GenerateButtons(buttons []Button) (components []discord.InteractiveComponent) {
+	for _, button := range buttons {
+		if button.Active {
+			components = append(components,
+				discord.ButtonComponent{
+					CustomID: button.ID,
+					Label:    button.Label,
+					Style:    discord.ButtonStylePrimary,
+				},
+			)
+		} else {
+			components = append(components,
+				discord.ButtonComponent{
+					CustomID: button.ID,
+					Label:    button.Label,
+					Style:    discord.ButtonStyleSecondary,
+				},
+			)
+		}
+
+	}
+	return
+}
