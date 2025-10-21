@@ -235,8 +235,12 @@ func PeriodChange(period string, hist map[string]yfa.PriceData) string {
 func FetchHistory(ticker *yfa.Ticker, period string) (map[string]yfa.PriceData, error) {
 	var start, end time.Time
 	end = time.Now()
+	interval := "1d"
 
 	switch period {
+	case "1d":
+		start = end.AddDate(0, 0, -1)
+		interval = "1m"
 	case "1wk":
 		start = end.AddDate(0, 0, -7)
 	case "1mo":
@@ -255,10 +259,16 @@ func FetchHistory(ticker *yfa.Ticker, period string) (map[string]yfa.PriceData, 
 		start = start.AddDate(0, 0, -2)
 	}
 
+	if end.Weekday() == time.Saturday {
+		end = end.AddDate(0, 0, -1)
+	} else if end.Weekday() == time.Sunday {
+		end = end.AddDate(0, 0, -2)
+	}
+
 	return ticker.History(yfa.HistoryQuery{
 		Start:    start.Format("2006-01-02"),
 		End:      fmt.Sprintf("%d", end.Unix()),
-		Interval: "1d",
+		Interval: interval,
 	})
 }
 
@@ -302,12 +312,17 @@ func GenerateLineChart(hist map[string]yfa.PriceData, info yfa.YahooTickerInfo, 
 		),
 		charts.WithLegendOpts(opts.Legend{Show: opts.Bool(false)}),
 	)
-	axes := slices.Collect(maps.Keys(hist))
-	slices.Sort(axes)
+	keys := slices.Collect(maps.Keys(hist))
+	slices.Sort(keys)
 
+	var axes []string
 	var values []yfa.PriceData
-	for _, k := range axes {
+	for _, k := range keys {
+		if hist[k].Close == 0 {
+			continue
+		}
 		values = append(values, hist[k])
+		axes = append(axes, k)
 	}
 
 	line.SetXAxis(axes).
@@ -353,6 +368,8 @@ func genLineData(symbol string, values []yfa.PriceData) (rs []opts.LineData) {
 
 func periodToFriendlyName(period string) string {
 	switch period {
+	case "1d":
+		return "1 Day"
 	case "1wk":
 		return "1 Week"
 	case "1mo":
@@ -369,8 +386,8 @@ func periodToFriendlyName(period string) string {
 }
 
 type Button struct {
-	ID    string
-	Label string
+	ID     string
+	Label  string
 	Active bool
 }
 

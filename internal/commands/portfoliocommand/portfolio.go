@@ -320,10 +320,16 @@ func generateComponent(pIndex int, period string, portfolio database.Portfolio) 
 			discord.TextDisplayComponent{
 				Content: fmt.Sprintf("# %s", portfolio.Symbol),
 			},
+			discord.SeparatorComponent{
+				Divider: util.Pointer(true),
+			},
 			discord.SectionComponent{
 				Components: []discord.SectionSubComponent{
 					discord.TextDisplayComponent{
 						Content: fmt.Sprintf("**Amount of Shares:** %s\n~~%s~~", shares, strings.Repeat(" ", 18+len(shares))),
+					},
+					discord.TextDisplayComponent{
+						Content: fmt.Sprintf("**Price:**\n%s", info.RegularMarketPrice.Fmt),
 					},
 					discord.TextDisplayComponent{
 						Content: fmt.Sprintf("**Daily %% Change:** %s\n**Weekly %% Change:** %s\n**Yearly %% Change:** %s", info.RegularMarketChangePercent.Fmt, util.PeriodChange("1wk", hist), util.PeriodChange("1y", hist)),
@@ -334,6 +340,9 @@ func generateComponent(pIndex int, period string, portfolio database.Portfolio) 
 						URL: fmt.Sprintf("attachment://%s", file.Name),
 					},
 				},
+			},
+			discord.SeparatorComponent{
+				Divider: util.Pointer(true),
 			},
 			discord.ActionRowComponent{
 				Components: util.GenerateButtons(

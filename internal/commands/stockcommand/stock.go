@@ -189,16 +189,16 @@ func generateComponent(symbol, period string) (component discord.LayoutComponent
 			discord.TextDisplayComponent{
 				Content: fmt.Sprintf("# %s", symbol),
 			},
+			discord.SeparatorComponent{
+				Divider: util.Pointer(true),
+			},
 			discord.SectionComponent{
 				Components: []discord.SectionSubComponent{
 					discord.TextDisplayComponent{
-						Content: fmt.Sprintf("**Daily %% Change**\n%s", info.RegularMarketChangePercent.Fmt),
+						Content: fmt.Sprintf("**Price:**\n%s", info.RegularMarketPrice.Fmt),
 					},
 					discord.TextDisplayComponent{
-						Content: fmt.Sprintf("**Weekly %% Change:**\n%s", util.PeriodChange("1wk", hist)),
-					},
-					discord.TextDisplayComponent{
-						Content: fmt.Sprintf("**Yearly %% Change:**\n%s", util.PeriodChange("1y", hist)),
+						Content: fmt.Sprintf("**Daily %% Change**\n%s\n**Weekly %% Change:**\n%s\n**Yearly %% Change:**\n%s", info.RegularMarketChangePercent.Fmt, util.PeriodChange("1wk", hist), util.PeriodChange("1y", hist)),
 					},
 				},
 				Accessory: discord.ThumbnailComponent{
@@ -206,6 +206,9 @@ func generateComponent(symbol, period string) (component discord.LayoutComponent
 						URL: fmt.Sprintf("attachment://%s", file.Name),
 					},
 				},
+			},
+			discord.SeparatorComponent{
+				Divider: util.Pointer(true),
 			},
 			discord.ActionRowComponent{
 				Components: util.GenerateButtons(
