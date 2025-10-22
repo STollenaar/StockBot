@@ -195,7 +195,7 @@ func generateComponent(symbol, period string) (component discord.LayoutComponent
 			discord.SectionComponent{
 				Components: []discord.SectionSubComponent{
 					discord.TextDisplayComponent{
-						Content: fmt.Sprintf("**Price:**\n%s", info.RegularMarketPrice.Fmt),
+						Content: fmt.Sprintf("**Price:**\n%s%s", info.CurrencySymbol, info.RegularMarketPrice.Fmt),
 					},
 					discord.TextDisplayComponent{
 						Content: fmt.Sprintf("**Daily %% Change**\n%s\n**Weekly %% Change:**\n%s\n**Yearly %% Change:**\n%s", info.RegularMarketChangePercent.Fmt, util.PeriodChange("1wk", hist), util.PeriodChange("1y", hist)),
