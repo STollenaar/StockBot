@@ -22,6 +22,17 @@ func NewTicker(symbol string) *Ticker {
 	return &Ticker{Symbol: symbol, history: h, option: o, information: i}
 }
 
+// NewTickers creates a slice of new Ticker instances for given symbols.
+// It initializes the history, option, and information components needed to fetch
+// historical price data, options data, and ticker information.
+func NewTickers(symbol []string) (result []*Ticker) {
+	for _, s := range symbol {
+		r := NewTicker(s)
+		result = append(result, r)
+	}
+	return
+}
+
 // Quote returns the latest PriceData for the Ticker's symbol.
 // This is a convenience wrapper around the History function. It fetches the historical
 // price data for the symbol, sorts the dates, and returns the most recent entry.

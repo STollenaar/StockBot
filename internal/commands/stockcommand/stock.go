@@ -99,63 +99,6 @@ func showHandler(args discord.SlashCommandInteractionData, event *events.Applica
 	}
 }
 
-func getShowEmbed(symbol string) (embeds []discord.Embed) {
-	ticker := yfa.NewTicker(symbol)
-	// get the latest PriceData
-	info, err := ticker.Info()
-
-	if err != nil {
-		slog.Error("Error fetching stock", slog.Any("err", err))
-		return
-	}
-
-	var embed discord.Embed
-
-	// Handle not found
-	if info.LongName == "" {
-		embed.Title = "Not found"
-		embed.Description = fmt.Sprintf("The stock with symbol: %s couldn't be found", symbol)
-		embeds = append(embeds, embed)
-		return
-	}
-
-	hist, err := util.FetchHistory(ticker, "1y")
-	if err != nil {
-		slog.Error("Error getting history", slog.Any("err", err))
-	}
-
-	embed.Title = info.LongName
-	embed.Fields = append(embed.Fields,
-		discord.EmbedField{
-			Name:   "Price",
-			Value:  fmt.Sprintf("%s %s %.2f", info.Currency, info.CurrencySymbol, info.RegularMarketPrice.Raw),
-			Inline: util.Pointer(true),
-		},
-		discord.EmbedField{
-			Name:   "Exchange",
-			Value:  info.Exchange,
-			Inline: util.Pointer(true),
-		},
-		discord.EmbedField{},
-		discord.EmbedField{
-			Name:   "Dialy % Change",
-			Value:  info.RegularMarketChangePercent.Fmt,
-			Inline: util.Pointer(true),
-		},
-		util.PeriodChangeEmbed("1wk", hist),
-		util.PeriodChangeEmbed("1mo", hist),
-		util.PeriodChangeEmbed("1y", hist),
-	)
-	if info.RegularMarketChangePercent.Raw > 0 {
-		embed.Color = 5763719
-	} else {
-		embed.Color = 15548997
-	}
-
-	embeds = append([]discord.Embed{}, embed)
-	return
-}
-
 func generateComponent(symbol, period string) (component discord.LayoutComponent, file *discord.File) {
 
 	ticker := yfa.NewTicker(symbol)
@@ -187,7 +130,7 @@ func generateComponent(symbol, period string) (component discord.LayoutComponent
 		AccentColor: color,
 		Components: []discord.ContainerSubComponent{
 			discord.TextDisplayComponent{
-				Content: fmt.Sprintf("# %s", symbol),
+				Content: fmt.Sprintf("# %s\n%s", symbol, info.LongName),
 			},
 			discord.SeparatorComponent{
 				Divider: util.Pointer(true),
@@ -195,7 +138,7 @@ func generateComponent(symbol, period string) (component discord.LayoutComponent
 			discord.SectionComponent{
 				Components: []discord.SectionSubComponent{
 					discord.TextDisplayComponent{
-						Content: fmt.Sprintf("**Price:**\n%s%s", info.CurrencySymbol, info.RegularMarketPrice.Fmt),
+						Content: fmt.Sprintf("**Price:**\n%s%s %s", info.CurrencySymbol, info.RegularMarketPrice.Fmt, info.Currency),
 					},
 					discord.TextDisplayComponent{
 						Content: fmt.Sprintf("**Daily %% Change**\n%s\n**Weekly %% Change:**\n%s\n**Yearly %% Change:**\n%s", info.RegularMarketChangePercent.Fmt, util.PeriodChange("1wk", hist), util.PeriodChange("1y", hist)),

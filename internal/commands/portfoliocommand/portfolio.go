@@ -318,7 +318,7 @@ func generateComponent(pIndex int, period string, portfolio database.Portfolio) 
 		AccentColor: color,
 		Components: []discord.ContainerSubComponent{
 			discord.TextDisplayComponent{
-				Content: fmt.Sprintf("# %s", portfolio.Symbol),
+				Content: fmt.Sprintf("# %s\n%s", portfolio.Symbol, info.LongName),
 			},
 			discord.SeparatorComponent{
 				Divider: util.Pointer(true),
@@ -329,7 +329,7 @@ func generateComponent(pIndex int, period string, portfolio database.Portfolio) 
 						Content: fmt.Sprintf("**Amount of Shares:** %s\n~~%s~~", shares, strings.Repeat(" ", 18+len(shares))),
 					},
 					discord.TextDisplayComponent{
-						Content: fmt.Sprintf("**Price:**\n%s%s", info.CurrencySymbol, info.RegularMarketPrice.Fmt),
+						Content: fmt.Sprintf("**Price:**\n%s%s %s", info.CurrencySymbol, info.RegularMarketPrice.Fmt, info.Currency),
 					},
 					discord.TextDisplayComponent{
 						Content: fmt.Sprintf("**Daily %% Change:** %s\n**Weekly %% Change:** %s\n**Yearly %% Change:** %s", info.RegularMarketChangePercent.Fmt, util.PeriodChange("1wk", hist), util.PeriodChange("1y", hist)),

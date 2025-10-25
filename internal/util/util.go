@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/disgoorg/disgo/discord"
@@ -321,7 +322,11 @@ func GenerateLineChart(hist map[string]yfa.PriceData, info yfa.YahooTickerInfo, 
 		if hist[k].Close == 0 {
 			continue
 		}
+		
 		values = append(values, hist[k])
+		if period == "1d" {
+			k = strings.Split(k, " ")[1]
+		}
 		axes = append(axes, k)
 	}
 
