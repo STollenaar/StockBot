@@ -15,6 +15,7 @@ import (
 
 	_ "github.com/marcboeker/go-duckdb/v2" // DuckDB Go driver
 	"github.com/stollenaar/stockbot/internal/util"
+	"github.com/stollenaar/stockbot/internal/util/yfa"
 )
 
 var (
@@ -136,12 +137,34 @@ type Portfolio struct {
 	Shares float64
 }
 
+func (p Portfolio) Values() []interface{} {
+	return []interface{}{p.UserID, p.Symbol, p.Shares}
+}
+
 type WatchList struct {
 	UserID      string
 	Symbol      string
 	PriceTarget float64
 	Triggered   bool
 	Direction   bool
+}
+
+func (w WatchList) Values() []interface{} {
+	return []interface{}{w.UserID, w.Symbol, w.PriceTarget, w.Direction}
+}
+
+type StockPrice struct {
+	Symbol string
+	Date   time.Time
+	Open   float64
+	High   float64
+	Low    float64
+	Close  float64
+	Volume int64
+}
+
+func (s StockPrice) Values() []interface{} {
+	return []interface{}{s.Symbol, s.Date, s.Open, s.High, s.Low, s.Close, s.Volume}
 }
 
 func GetCompletePortfolio(userID string) (portfolio []Portfolio, err error) {
@@ -183,6 +206,7 @@ func (p *Portfolio) UpsertPortfolio() error {
 		return err
 	}
 	defer tx.Rollback()
+	AddTrackedStock(p.Symbol)
 
 	_, err = tx.Exec(`
 		INSERT INTO portfolios (user_id, symbol, shares)
@@ -243,6 +267,7 @@ func (w *WatchList) UpsertWatchlist() error {
 		return err
 	}
 	defer tx.Rollback()
+	AddTrackedStock(w.Symbol)
 
 	_, err = tx.Exec(`
 		INSERT INTO watchlists (user_id, symbol, price_target, direction)
@@ -273,4 +298,183 @@ func (w *WatchList) SetTriggerWatchlist() error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// IsTrackedStock checks whether the given symbol exists in tracked_stocks.
+func IsTrackedStock(symbol string) (bool, error) {
+	var existsInt int
+	row := duckdbClient.QueryRow(`SELECT EXISTS(SELECT 1 FROM tracked_stocks WHERE symbol = ?);`, symbol)
+	if err := row.Scan(&existsInt); err != nil {
+		return false, err
+	}
+	return existsInt == 1, nil
+}
+
+func GetTrackedStocks() (tracked []string, err error) {
+	rows, err := duckdbClient.Query(`SELECT * FROM tracked_stocks;`)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for rows.Next() {
+		var symbol string
+		err := rows.Scan(&symbol)
+		if err != nil {
+			continue
+		}
+		tracked = append(tracked, symbol)
+	}
+	return
+}
+
+// AddTrackedStock inserts the symbol into tracked_stocks (no-op if already present).
+func AddTrackedStock(symbol string) error {
+	if ok, _ := IsTrackedStock(symbol); !ok {
+		_, err := duckdbClient.Exec(`INSERT INTO tracked_stocks (symbol) VALUES (?) ON CONFLICT DO NOTHING;`, symbol)
+
+		if err != nil {
+			return err
+		}
+
+		ticker := yfa.NewTicker(symbol)
+		hist, err := yfa.FetchHistory(ticker)
+
+		if err != nil {
+			slog.Error("failed getting 5year history", slog.Any("err", err))
+			return err
+		}
+
+		var stockPrices []StockPrice
+
+		for date, price := range hist {
+			// parse the date key into a time.Time (stored as UTC)
+			parsedDate, _ := time.ParseInLocation("2006-01-02", date, time.UTC)
+
+			// build StockPrice and persist
+			stockPrices = append(stockPrices, StockPrice{
+				Symbol: symbol,
+				Date:   parsedDate,
+				Open:   price.Open,
+				High:   price.High,
+				Low:    price.Low,
+				Close:  price.Close,
+				Volume: price.Volume,
+			})
+		}
+
+		if err := SetStockPrices(stockPrices); err != nil {
+			slog.Error("failed to set stock price", slog.Any("err", err), slog.String("symbol", symbol))
+		}
+	}
+	return nil
+}
+
+// RemoveTrackedStock deletes the symbol from tracked_stocks and optionally its prices.
+func RemoveTrackedStock(symbol string) error {
+	tx, err := duckdbClient.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`DELETE FROM stock_prices WHERE symbol = ?;`, symbol)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(`DELETE FROM tracked_stocks WHERE symbol = ?;`, symbol)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// GetStockPrices returns stock prices for a symbol between start and end (inclusive),
+// ordered by date ascending.
+func GetStockPrices(symbol string, start, end time.Time) (prices []StockPrice, err error) {
+	rows, err := duckdbClient.Query(`
+        SELECT symbol, date, open, high, low, close, volume
+        FROM stock_prices
+        WHERE symbol = ? AND date >= ? AND date <= ?
+        ORDER BY date ASC;
+    `, symbol, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var sp StockPrice
+		if err := rows.Scan(&sp.Symbol, &sp.Date, &sp.Open, &sp.High, &sp.Low, &sp.Close, &sp.Volume); err != nil {
+			slog.Error("failed scanning stock price row", slog.Any("err", err))
+			return nil, err
+		}
+		prices = append(prices, sp)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return prices, nil
+}
+
+// SetStockPrice inserts or updates a price row for the given symbol/date.
+// volume can be 0 if unknown.
+func SetStockPrice(stock StockPrice) error {
+	tx, err := duckdbClient.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`
+        INSERT INTO stock_prices (symbol, date, open, high, low, close, volume)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT DO UPDATE SET
+            open = EXCLUDED.open,
+            high = EXCLUDED.high,
+            low = EXCLUDED.low,
+            close = EXCLUDED.close,
+            volume = EXCLUDED.volume;
+    `, stock.Symbol, stock.Date, stock.Open, stock.High, stock.Low, stock.Close, stock.Volume)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// SetStockPrices inserts or updates a price row for the given symbol/date.
+// volume can be 0 if unknown.
+func SetStockPrices(stocks []StockPrice) error {
+	tx, err := duckdbClient.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, stock := range stocks {
+		_, err = tx.Exec(`
+        INSERT INTO stock_prices (symbol, date, open, high, low, close, volume)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT DO UPDATE SET
+            open = EXCLUDED.open,
+            high = EXCLUDED.high,
+            low = EXCLUDED.low,
+            close = EXCLUDED.close,
+            volume = EXCLUDED.volume;
+    `, stock.Symbol, stock.Date, stock.Open, stock.High, stock.Low, stock.Close, stock.Volume)
+		if err != nil {
+			slog.Error("failed committing stock price", slog.Any("err", err))
+		}
+	}
+
+	return tx.Commit()
+}
+
+// RemoveStockPrice deletes a single price row for the given symbol and date.
+func RemoveStockPrice(symbol string, date time.Time) error {
+	_, err := duckdbClient.Exec(`DELETE FROM stock_prices WHERE symbol = ? AND date = ?;`, symbol, date)
+	return err
 }

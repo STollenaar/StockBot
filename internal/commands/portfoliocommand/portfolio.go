@@ -12,6 +12,7 @@ import (
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/stollenaar/stockbot/internal/database"
 	"github.com/stollenaar/stockbot/internal/util"
+	"github.com/stollenaar/stockbot/internal/util/trackers"
 	"github.com/stollenaar/stockbot/internal/util/yfa"
 )
 
@@ -296,14 +297,14 @@ func generateComponent(pIndex int, period string, portfolio database.Portfolio) 
 		return
 	}
 
-	hist, err := util.FetchHistory(ticker, period)
+	hist, err := trackers.FetchHistory(ticker, period)
 
 	if err != nil {
 		slog.Error("Error fetching history", slog.Any("err", err))
 		return
 	}
 
-	file = util.GenerateLineChart(hist, info, period)
+	file = trackers.GenerateLineChart(hist.Yearly, info, period)
 	shares := fmt.Sprintf("%.2f", portfolio.Shares)
 
 	var color int
@@ -332,7 +333,7 @@ func generateComponent(pIndex int, period string, portfolio database.Portfolio) 
 						Content: fmt.Sprintf("**Price:**\n%s%s %s", info.CurrencySymbol, info.RegularMarketPrice.Fmt, info.Currency),
 					},
 					discord.TextDisplayComponent{
-						Content: fmt.Sprintf("**Daily %% Change:** %s\n**Weekly %% Change:** %s\n**Yearly %% Change:** %s", info.RegularMarketChangePercent.Fmt, util.PeriodChange("1wk", hist), util.PeriodChange("1y", hist)),
+						Content: fmt.Sprintf("**Daily %% Change:** %s\n**Weekly %% Change:** %s\n**Yearly %% Change:** %s", info.RegularMarketChangePercent.Fmt, trackers.PeriodChange("1wk", hist.Yearly), trackers.PeriodChange("1y", hist.Yearly)),
 					},
 				},
 				Accessory: discord.ThumbnailComponent{

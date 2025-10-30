@@ -19,8 +19,8 @@ import (
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/stollenaar/stockbot/internal/commands"
-	"github.com/stollenaar/stockbot/internal/commands/watchcommand"
 	"github.com/stollenaar/stockbot/internal/util"
+	"github.com/stollenaar/stockbot/internal/util/trackers"
 )
 
 var (
@@ -119,7 +119,7 @@ func main() {
 		log.Fatal("error while connecting to gateway: ", err)
 	}
 	slog.Info("Bot started")
-	watchcommand.StartChecker(client)
+	trackers.StartChecker(client)
 
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)

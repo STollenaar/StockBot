@@ -4,15 +4,11 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
-	"github.com/disgoorg/disgo/bot"
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
-	"github.com/disgoorg/snowflake/v2"
 	"github.com/stollenaar/stockbot/internal/database"
 	"github.com/stollenaar/stockbot/internal/util"
-	"github.com/stollenaar/stockbot/internal/util/yfa"
 )
 
 var (
@@ -25,18 +21,6 @@ var (
 type WatchCommand struct {
 	Name        string
 	Description string
-}
-
-func StartChecker(client *bot.Client) {
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		for range ticker.C {
-			now := time.Now()
-			if now.Weekday() != time.Saturday && now.Weekday() != time.Sunday {
-				CheckAlerts(client)
-			}
-		}
-	}()
 }
 
 func (s WatchCommand) Handler(event *events.ApplicationCommandInteractionCreate) {
@@ -200,56 +184,5 @@ func (s WatchCommand) CreateCommandArguments() []discord.ApplicationCommandOptio
 				},
 			},
 		},
-	}
-}
-
-func CheckAlerts(client *bot.Client) {
-	watchlists, err := database.GetWatchLists()
-
-	if err != nil {
-		slog.Error("Error fetching watchlists:", slog.Any("err", err))
-		return
-	}
-
-	grouped := make(map[string][]database.WatchList)
-	for _, watched := range watchlists {
-		grouped[watched.Symbol] = append(grouped[watched.Symbol], watched)
-	}
-
-	for symbol, lists := range grouped {
-		ticker := yfa.NewTicker(symbol)
-		// get the latest PriceData
-		info, err := ticker.Info()
-
-		if err != nil {
-			continue
-		}
-
-		toMention := make(map[bool][]string)
-		for _, w := range lists {
-			if w.Direction && info.RegularMarketPrice.Raw >= w.PriceTarget {
-				toMention[true] = append(toMention[true], w.UserID)
-				flk, err := snowflake.Parse(w.UserID)
-				if err != nil {
-					continue
-				}
-				dmChannel, _ := client.Rest.CreateDMChannel(flk)
-				client.Rest.CreateMessage(dmChannel.ID(), discord.MessageCreate{
-					Content: fmt.Sprintf("This is a price alert for %s\nThe current price is %s which is above your target of %.2f", w.Symbol, info.RegularMarketPrice.Fmt, w.PriceTarget),
-				})
-				w.SetTriggerWatchlist()
-			} else if !w.Direction && info.RegularMarketPrice.Raw <= w.PriceTarget {
-				toMention[false] = append(toMention[false], w.UserID)
-				flk, err := snowflake.Parse(w.UserID)
-				if err != nil {
-					continue
-				}
-				dmChannel, _ := client.Rest.CreateDMChannel(flk)
-				client.Rest.CreateMessage(dmChannel.ID(), discord.MessageCreate{
-					Content: fmt.Sprintf("This is a price alert for %s\nThe current price is %s which is below your target of %.2f", w.Symbol, info.RegularMarketPrice.Fmt, w.PriceTarget),
-				})
-				w.SetTriggerWatchlist()
-			}
-		}
 	}
 }

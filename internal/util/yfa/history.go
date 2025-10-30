@@ -181,3 +181,38 @@ func (h *History) transformData(data YahooHistoryRespose) map[string]PriceData {
 	}
 	return d
 }
+
+type PriceHistory struct {
+	Daily  map[string]PriceData
+	Yearly map[string]PriceData
+}
+
+func FetchHistory(ticker *Ticker) (map[string]PriceData, error) {
+	end := time.Now()
+	start := end.AddDate(-1, 0, 0)
+
+	// shift start/end off weekend
+	if start.Weekday() == time.Saturday {
+		start = start.AddDate(0, 0, -1)
+	} else if start.Weekday() == time.Sunday {
+		start = start.AddDate(0, 0, -2)
+	}
+
+	if end.Weekday() == time.Saturday {
+		end = end.AddDate(0, 0, -1)
+	} else if end.Weekday() == time.Sunday {
+		end = end.AddDate(0, 0, -2)
+	}
+
+	hist, err :=ticker.History(HistoryQuery{
+		Start:    start.Format("2006-01-02"),
+		End:      fmt.Sprintf("%d", end.Unix()),
+		Interval: "1d",
+	})
+
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	return hist, err
+}
