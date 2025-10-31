@@ -118,7 +118,11 @@ func generateComponent(symbol, period string) (component discord.LayoutComponent
 		return
 	}
 
-	file = trackers.GenerateLineChart(hist.Yearly, info, period)
+	if period == "1d" {
+		file = trackers.GenerateLineChart(hist.Daily, info, period)
+	}else {
+		file = trackers.GenerateLineChart(hist.Yearly, info, period)
+	}
 
 	var color int
 	if info.RegularMarketChangePercent.Raw > 0 {

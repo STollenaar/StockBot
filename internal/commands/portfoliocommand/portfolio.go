@@ -304,7 +304,12 @@ func generateComponent(pIndex int, period string, portfolio database.Portfolio) 
 		return
 	}
 
-	file = trackers.GenerateLineChart(hist.Yearly, info, period)
+	if period == "1d" {
+		file = trackers.GenerateLineChart(hist.Daily, info, period)
+	} else {
+		file = trackers.GenerateLineChart(hist.Yearly, info, period)
+	}
+
 	shares := fmt.Sprintf("%.2f", portfolio.Shares)
 
 	var color int
