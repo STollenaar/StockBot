@@ -222,7 +222,7 @@ func (s PortfolioCommand) ComponentHandler(event *events.ComponentInteractionCre
 	var attachments []discord.AttachmentUpdate
 	for i, attachment := range components {
 		if i != pIndex {
-			id := attachment.(discord.ContainerComponent).Components[1].(discord.SectionComponent).Accessory.(discord.ThumbnailComponent).Media.AttachmentID
+			id := attachment.(discord.ContainerComponent).Components[2].(discord.SectionComponent).Accessory.(discord.ThumbnailComponent).Media.AttachmentID
 			if id == snowflake.MustParse("0") {
 				continue
 			}

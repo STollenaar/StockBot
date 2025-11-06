@@ -394,6 +394,9 @@ func RemoveTrackedStock(symbol string) error {
 // GetStockPrices returns stock prices for a symbol between start and end (inclusive),
 // ordered by date ascending.
 func GetStockPrices(symbol string, start, end time.Time) (prices []StockPrice, err error) {
+	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
+	end = time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, time.UTC)
+
 	rows, err := duckdbClient.Query(`
         SELECT symbol, date, open, high, low, close, volume
         FROM stock_prices
