@@ -192,6 +192,7 @@ func GenerateLineChart(hist map[string]yfa.PriceData, info yfa.YahooTickerInfo, 
 				Position:     "left",
 				NameLocation: "middle",
 				NameGap:      25,
+				Scale:        opts.Bool(true),
 			},
 		),
 		charts.WithXAxisOpts(
