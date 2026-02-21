@@ -111,9 +111,7 @@ func FetchHistory(ticker *yfa.Ticker, period string) (yfa.PriceHistory, error) {
 
 	var daily, yearly map[string]yfa.PriceData
 
-	yearStart := end.AddDate(-1, 0, 0)
-
-	rows, dbErr := database.GetStockPrices(ticker.Symbol, yearStart, end)
+	rows, dbErr := database.GetStockPrices(ticker.Symbol, start, end)
 	if dbErr == nil && len(rows) > 0 {
 		yearly = stockPriceToPriceData(rows)
 	}
@@ -121,7 +119,7 @@ func FetchHistory(ticker *yfa.Ticker, period string) (yfa.PriceHistory, error) {
 	// if DB miss, attempt to fetch yearly from yahoo
 	if yearly == nil {
 		if hist, hErr := ticker.History(yfa.HistoryQuery{
-			Start:    yearStart.Format("2006-01-02"),
+			Start:    start.Format("2006-01-02"),
 			End:      fmt.Sprintf("%d", end.Unix()),
 			Interval: "1d",
 		}); hErr == nil {
