@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	WORKING_DIR = os.Getenv("PWD")
+	WORKING_DIR, _ = os.Getwd()
 )
 
 func PeriodChange(period string, hist map[string]yfa.PriceData) string {

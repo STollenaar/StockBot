@@ -12,6 +12,11 @@ import (
 	"github.com/stollenaar/stockbot/internal/util/yfa"
 )
 
+const (
+	GREEN = 5763719
+	RED = 15548997
+)
+
 var (
 	StockCmd = StockCommand{
 		Name:        "stock",
@@ -126,9 +131,9 @@ func generateComponent(symbol, period string) (component discord.LayoutComponent
 
 	var color int
 	if info.RegularMarketChangePercent.Raw > 0 {
-		color = 5763719
+		color = GREEN
 	} else {
-		color = 15548997
+		color = RED
 	}
 
 	component = discord.ContainerComponent{

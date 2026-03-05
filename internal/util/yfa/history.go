@@ -3,6 +3,7 @@ package yfa
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"math/rand"
@@ -26,34 +27,34 @@ type YahooHistoryResult struct {
 }
 
 type YahooMeta struct {
-	Currency             string                 `json:"currency"`
-	Symbol               string                 `json:"symbol"`
-	ExchangeName         string                 `json:"exchangeName"`
-	FullExchangeName     string                 `json:"fullExchangeName"`
-	InstrumentType       string                 `json:"instrumentType"`
-	FirstTradeDate       int64                  `json:"firstTradeDate"`
-	RegularMarketTime    int64                  `json:"regularMarketTime"`
-	HasPrePostMarketData bool                   `json:"hasPrePostMarketData"`
-	GmtOffset            int                    `json:"gmtoffset"`
-	Timezone             string                 `json:"timezone"`
-	ExchangeTimezoneName string                 `json:"exchangeTimezoneName"`
-	RegularMarketPrice   float64                `json:"regularMarketPrice"`
-	FiftyTwoWeekHigh     float64                `json:"fiftyTwoWeekHigh"`
-	FiftyTwoWeekLow      float64                `json:"fiftyTwoWeekLow"`
-	RegularMarketDayHigh float64                `json:"regularMarketDayHigh"`
-	RegularMarketDayLow  float64                `json:"regularMarketDayLow"`
-	RegularMarketVolume  int64                  `json:"regularMarketVolume"`
-	LongName             string                 `json:"longName"`
-	ShortName            string                 `json:"shortName"`
-	ChartPreviousClose   float64                `json:"chartPreviousClose"`
-	PreviousClose        float64                `json:"previousClose"`
-	Scale                int                    `json:"scale"`
-	PriceHint            int                    `json:"priceHint"`
-	CurrentTradingPeriod YahooTradingPeriod     `json:"currentTradingPeriod"`
-	TradingPeriods       [][]YahooTradingPeriod `json:"tradingPeriods"`
-	DataGranularity      string                 `json:"dataGranularity"`
-	Range                string                 `json:"range"`
-	ValidRanges          []string               `json:"validRanges"`
+	Currency             string                            `json:"currency"`
+	Symbol               string                            `json:"symbol"`
+	ExchangeName         string                            `json:"exchangeName"`
+	FullExchangeName     string                            `json:"fullExchangeName"`
+	InstrumentType       string                            `json:"instrumentType"`
+	FirstTradeDate       int64                             `json:"firstTradeDate"`
+	RegularMarketTime    int64                             `json:"regularMarketTime"`
+	HasPrePostMarketData bool                              `json:"hasPrePostMarketData"`
+	GmtOffset            int                               `json:"gmtoffset"`
+	Timezone             string                            `json:"timezone"`
+	ExchangeTimezoneName string                            `json:"exchangeTimezoneName"`
+	RegularMarketPrice   float64                           `json:"regularMarketPrice"`
+	FiftyTwoWeekHigh     float64                           `json:"fiftyTwoWeekHigh"`
+	FiftyTwoWeekLow      float64                           `json:"fiftyTwoWeekLow"`
+	RegularMarketDayHigh float64                           `json:"regularMarketDayHigh"`
+	RegularMarketDayLow  float64                           `json:"regularMarketDayLow"`
+	RegularMarketVolume  int64                             `json:"regularMarketVolume"`
+	LongName             string                            `json:"longName"`
+	ShortName            string                            `json:"shortName"`
+	ChartPreviousClose   float64                           `json:"chartPreviousClose"`
+	PreviousClose        float64                           `json:"previousClose"`
+	Scale                int                               `json:"scale"`
+	PriceHint            int                               `json:"priceHint"`
+	CurrentTradingPeriod YahooTradingPeriod                `json:"currentTradingPeriod"`
+	TradingPeriods       map[string][][]YahooTradingPeriod `json:"tradingPeriods,omitempty"`
+	DataGranularity      string                            `json:"dataGranularity"`
+	Range                string                            `json:"range"`
+	ValidRanges          []string                          `json:"validRanges"`
 }
 
 type YahooTradingPeriod struct {
@@ -140,6 +141,7 @@ func (h *History) GetHistory(symbol string) (YahooHistoryRespose, error) {
 	params.Add("interval", h.query.Interval)
 	params.Add("period1", h.query.Start)
 	params.Add("period2", h.query.End)
+	params.Add("includePrePost", "true")
 
 	endpoint := fmt.Sprintf("%s/v8/finance/chart/%s", BASE_URL, symbol)
 	resp, err := h.client.Get(endpoint, params)
@@ -150,8 +152,11 @@ func (h *History) GetHistory(symbol string) (YahooHistoryRespose, error) {
 	defer resp.Body.Close()
 
 	var historyResponse YahooHistoryRespose
-	if err := json.NewDecoder(resp.Body).Decode(&historyResponse); err != nil {
-		log.Fatalf("Failed to decode history data JSON response: %v", err)
+	body, err := io.ReadAll(resp.Body)
+
+	if err := json.Unmarshal(body, &historyResponse); err != nil {
+		slog.Error("Failed to decode history data JSON response:", slog.Any("err", err), "with body", slog.Any("body", resp.Body))
+		// os.WriteFile("body.json", body, 0644)
 	}
 
 	if len(historyResponse.Chart.Result) == 0 {
@@ -204,14 +209,14 @@ func FetchHistory(ticker *Ticker) (map[string]PriceData, error) {
 		end = end.AddDate(0, 0, -2)
 	}
 
-	hist, err :=ticker.History(HistoryQuery{
+	hist, err := ticker.History(HistoryQuery{
 		Start:    start.Format("2006-01-02"),
 		End:      fmt.Sprintf("%d", end.Unix()),
 		Interval: "1d",
 	})
 
 	if err != nil {
-		fmt.Println(err)
+		slog.Error("Error fetching history", slog.Any("err", err))
 	}
 
 	return hist, err
